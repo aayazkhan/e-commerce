@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info: { title: Inventory Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+paths:
+  /api/v1/inventory/items/{variantId}: { get: { summary: Read available stock by variant, parameters: [{ name: variantId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Warehouse stock balances } } } }
+  /api/v1/inventory/reservations: { post: { security: [{ bearerAuth: [] }], summary: Atomically reserve stock with idempotency, responses: { '201': { description: Reservation } } } }
+  /api/v1/inventory/reservations/{reservationId}: { get: { security: [{ bearerAuth: [] }], summary: Read an owned reservation, responses: { '200': { description: Reservation } } } }
+  /api/v1/inventory/reservations/{reservationId}/release: { post: { security: [{ bearerAuth: [] }], summary: Release or expire a reservation, responses: { '200': { description: Released reservation } } } }
+  /api/v1/inventory/reservations/{reservationId}/commit: { post: { security: [{ bearerAuth: [] }], summary: Commit a reservation, responses: { '200': { description: Committed reservation } } } }
+  /api/v1/admin/inventory/items: { post: { security: [{ bearerAuth: [] }], summary: Create a warehouse inventory item, responses: { '201': { description: Created item } } } }
+  /api/v1/admin/inventory/adjustments: { post: { security: [{ bearerAuth: [] }], summary: Apply an auditable stock adjustment, responses: { '200': { description: Adjusted item } } } }
+  /api/v1/admin/inventory/{variantId}/movements: { get: { security: [{ bearerAuth: [] }], summary: Read stock movements, responses: { '200': { description: Movement audit log } } } }

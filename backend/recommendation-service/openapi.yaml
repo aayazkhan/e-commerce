@@ -1,0 +1,6 @@
+openapi: 3.0.3
+info: { title: Recommendation Service API, version: 1.0.0 }
+paths:
+  /api/v1/recommendations: { get: { responses: { '200': { description: deterministic recommendations } } } }
+  /api/v1/recommendations/fallback: { get: { responses: { '200': { description: popular fallback } } } }
+  /api/v1/recommendations/events: { post: { responses: { '202': { description: accepted } } } }

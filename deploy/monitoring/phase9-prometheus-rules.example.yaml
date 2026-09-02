@@ -1,0 +1,62 @@
+# Example PrometheusRule. Metric names/labels must be mapped to the deployed
+# exporter before applying; unverified alert expressions are not go-live evidence.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: commerce-phase9-critical
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: commerce-critical
+      rules:
+        - alert: CommerceApi5xxHigh
+          expr: sum(rate(http_server_requests_seconds_count{service=~"commerce-.*",status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count{service=~"commerce-.*"}[5m])) > 0.02
+          for: 10m
+          labels: { severity: page, owner: platform }
+          annotations:
+            summary: Commerce API 5xx rate is high
+            runbook: docs/operations/phase8-runbooks.md
+        - alert: CommerceCheckoutFailureHigh
+          expr: sum(rate(commerce_checkout_failures_total[5m])) / sum(rate(commerce_checkout_attempts_total[5m])) > 0.02
+          for: 10m
+          labels: { severity: page, owner: commerce }
+          annotations:
+            summary: Checkout failure rate exceeded the release threshold
+            runbook: docs/operations/incident-management.md
+        - alert: CommercePaymentFailureHigh
+          expr: sum(rate(commerce_payment_failures_total[5m])) / sum(rate(commerce_payment_attempts_total[5m])) > 0.02
+          for: 10m
+          labels: { severity: page, owner: payments }
+          annotations:
+            summary: Payment failure rate exceeded the release threshold
+            runbook: docs/operations/incident-management.md
+        - alert: CommerceKafkaLagHigh
+          expr: max(commerce_kafka_consumer_lag) > 10000
+          for: 15m
+          labels: { severity: ticket, owner: messaging }
+          annotations:
+            summary: Kafka consumer lag is not recovering
+            runbook: docs/operations/phase8-runbooks.md
+        - alert: CommerceNotificationDlqGrowth
+          expr: increase(commerce_notification_dlq_total[15m]) > 0
+          for: 5m
+          labels: { severity: ticket, owner: communications }
+          annotations:
+            summary: Notification deliveries are reaching the DLQ
+            runbook: docs/operations/phase8-runbooks.md
+        - alert: CommerceDatabasePoolExhaustion
+          expr: max(commerce_db_pool_pending) > 0
+          for: 10m
+          labels: { severity: page, owner: database }
+          annotations:
+            summary: A service is waiting for database connections
+            runbook: docs/operations/phase8-runbooks.md
+        - alert: CommerceCertificateExpirySoon
+          expr: probe_ssl_earliest_cert_expiry - time() < 14 * 24 * 60 * 60
+          for: 1h
+          labels: { severity: ticket, owner: platform }
+          annotations:
+            summary: A monitored TLS certificate expires within 14 days
+            runbook: docs/deployment/tls-and-secrets.md

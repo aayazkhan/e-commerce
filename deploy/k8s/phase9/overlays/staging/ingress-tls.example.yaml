@@ -1,0 +1,26 @@
+# Example only: set the real DNS name, ingress class, issuer, and gateway route
+# for the target cluster before applying. The repository gateway currently
+# exposes health/metrics only; public API routing is a deployment blocker.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: commerce-api
+  namespace: commerce-staging
+  annotations:
+    cert-manager.io/cluster-issuer: commerce-staging
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [api-staging.example.invalid]
+      secretName: commerce-api-staging-tls
+  rules:
+    - host: api-staging.example.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080

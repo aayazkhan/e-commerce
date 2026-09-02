@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: commerce
+
+# The base composes the existing service-owned manifests. It does not duplicate
+# deployments or change service boundaries.
+resources:
+  - ../../../../infrastructure/kubernetes/api-gateway.yaml
+  - ../../../../infrastructure/kubernetes/identity-service.yaml
+  - ../../../../infrastructure/kubernetes/phase3-services.yaml
+  - ../../phase4-commerce.yaml
+  - ../../phase5-commerce.yaml
+  - ../../phase6-commerce.yaml
+  - ../../phase7-commerce.yaml
+
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/automountServiceAccountToken
+        value: false
+      - op: add
+        path: /spec/template/spec/terminationGracePeriodSeconds
+        value: 45
+      - op: add
+        path: /spec/template/spec/securityContext
+        value:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext
+        value:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]

@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info: { title: Promotion and Coupon Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+paths:
+  /api/v1/promotions/quote: { post: { summary: Calculate an eligible discount without consuming usage, responses: { '200': { description: Deterministic promotion quote } } } }
+  /api/v1/promotions/validate: { post: { summary: Validate coupon/promotion eligibility, responses: { '200': { description: Validation quote } } } }
+  /api/v1/promotions/apply: { post: { security: [{ bearerAuth: [] }], summary: Reserve usage with atomic counters and idempotency, parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string } }], responses: { '201': { description: Reserved redemption } } } }
+  /api/v1/promotions/redemptions/{redemptionId}/release: { post: { security: [{ bearerAuth: [] }], summary: Release usage, responses: { '200': { description: Released redemption } } } }
+  /api/v1/promotions/redemptions/{redemptionId}/commit: { post: { security: [{ bearerAuth: [] }], summary: Commit usage, responses: { '200': { description: Committed redemption } } } }
+  /api/v1/admin/promotions: { post: { security: [{ bearerAuth: [] }], summary: Create promotion, responses: { '201': { description: Promotion } } } }
+  /api/v1/admin/promotions/{promotionId}: { patch: { security: [{ bearerAuth: [] }], summary: Update promotion, responses: { '200': { description: Promotion } } }, delete: { security: [{ bearerAuth: [] }], summary: Archive promotion, responses: { '200': { description: Promotion } } } }
+  /api/v1/admin/coupons: { post: { security: [{ bearerAuth: [] }], summary: Create coupon code, responses: { '201': { description: Coupon } } } }

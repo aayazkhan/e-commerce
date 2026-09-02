@@ -1,0 +1,18 @@
+# Requires the Prometheus Operator. Add a metrics Service/port contract to each
+# workload before applying; this selector is intentionally not enabled by base.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: commerce-services
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [commerce]
+  selector:
+    matchLabels:
+      observability.commerce/metrics: "true"
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

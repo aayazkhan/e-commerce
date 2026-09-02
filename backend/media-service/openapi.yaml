@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info: { title: Media Service API, version: 1.0.0 }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }
+paths:
+  /api/v1/media/presign: { post: { security: [{ bearerAuth: [] }], summary: Create validated S3-compatible presigned upload, description: Requires a client-declared SHA-256 which is verified during completion, responses: { '200': { description: Upload URL and metadata } } } }
+  /api/v1/media/upload: { post: { security: [{ bearerAuth: [] }], summary: Upload small validated image directly, requestBody: { required: true, content: { application/octet-stream: {} } }, responses: { '202': { description: Accepted for processing } } } }
+  /api/v1/media/{mediaId}/complete: { post: { security: [{ bearerAuth: [] }], summary: Validate a presigned object and enqueue processing, responses: { '202': { description: Accepted for processing } } } }
+  /api/v1/media/{mediaId}: { get: { summary: Get metadata and derivative URLs, responses: { '200': { description: Media metadata } } }, delete: { security: [{ bearerAuth: [] }], summary: Delete owned media metadata and storage objects, responses: { '200': { description: Deleted } } } }

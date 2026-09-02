@@ -1,0 +1,9 @@
+openapi: 3.0.3
+info: { title: Search Service API, version: 1.0.0 }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }
+paths:
+  /api/v1/search: { get: { summary: OpenSearch product search, parameters: [{ name: q, in: query, schema: { type: string } }, { name: categoryId, in: query, schema: { type: string } }, { name: brandId, in: query, schema: { type: string } }, { name: minPrice, in: query, schema: { type: integer, format: int64 } }, { name: maxPrice, in: query, schema: { type: integer, format: int64 } }, { name: sort, in: query, schema: { type: string, enum: [price_asc, price_desc, newest, relevance] } }], responses: { '200': { description: Hits and facets }, '503': { description: Search dependency unavailable } } } }
+  /api/v1/search/suggestions: { get: { summary: Prefix suggestions, responses: { '200': { description: Suggestions } } } }
+  /api/v1/search/filters: { get: { summary: Search facets, responses: { '200': { description: Facets } } } }
+  /api/v1/admin/search/reindex: { post: { security: [{ bearerAuth: [] }], summary: Build a new index and atomically swap products alias, responses: { '200': { description: Reindexed } } } }
+  /api/v1/admin/search/reindex/{productId}: { post: { security: [{ bearerAuth: [] }], summary: Reindex one product, responses: { '200': { description: Reindexed } } } }

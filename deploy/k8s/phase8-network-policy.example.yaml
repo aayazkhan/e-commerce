@@ -1,0 +1,29 @@
+# Review namespace/service dependencies before applying. This example intentionally
+# fails closed for unsolicited ingress while allowing egress to platform services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: commerce-services-default
+  namespace: commerce
+spec:
+  podSelector:
+    matchLabels:
+      commerce.network/managed: "true"
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: commerce
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: commerce
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

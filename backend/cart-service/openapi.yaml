@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info: { title: Cart Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+paths:
+  /api/v1/cart: { get: { summary: Read or create the caller cart, parameters: [{ name: X-Guest-Token, in: header, schema: { type: string } }], responses: { '200': { description: Durable cart and optional first-use guest token } } } }
+  /api/v1/cart/items: { post: { summary: Add or increment an item using a pricing snapshot, parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string } }], responses: { '201': { description: Cart } } }, delete: { summary: Clear cart, parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string } }], responses: { '200': { description: Cart } } } }
+  /api/v1/cart/items/{itemId}: { patch: { summary: Set item quantity after live price/stock validation, parameters: [{ name: itemId, in: path, required: true, schema: { type: string } }, { name: Idempotency-Key, in: header, required: true, schema: { type: string } }], responses: { '200': { description: Cart } } }, delete: { summary: Remove item, responses: { '200': { description: Cart } } } }
+  /api/v1/cart/merge: { post: { security: [{ bearerAuth: [] }], summary: Merge guest cart into authenticated cart with quantity cap, responses: { '200': { description: Merged cart } } } }
+  /api/v1/cart/validate: { post: { summary: Validate current prices and stock without reserving, responses: { '200': { description: Cart validation warnings } } } }

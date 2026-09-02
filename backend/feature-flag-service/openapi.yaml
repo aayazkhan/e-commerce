@@ -1,0 +1,9 @@
+openapi: 3.0.3
+info: { title: Feature Flag Service API, version: 1.0.0 }
+servers: [{ url: 'http://localhost:8103' }]
+paths:
+  /api/v1/feature-flags/evaluate: { post: { operationId: evaluateFlag, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EvaluationRequest' } } } }, responses: { '200': { description: Deterministic evaluation with safe fallback } } } }
+  /api/v1/admin/feature-flags: { get: { operationId: listFlags, security: [{ bearerAuth: [] }], responses: { '200': { description: Flags } } }, post: { operationId: createFlag, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+  schemas: { EvaluationRequest: { type: object, required: [key], properties: { key: { type: string }, userId: { type: string }, environment: { type: string }, fallbackValue: { type: string } } } }

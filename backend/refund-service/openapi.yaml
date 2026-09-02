@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info: { title: Refund Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }, internalToken: { type: apiKey, in: header, name: X-Internal-Service-Token } }
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+paths:
+  /api/v1/refunds: { post: { security: [{ bearerAuth: [] }], summary: Request a refund, parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }], responses: { '201': { description: Refund request } } }, get: { security: [{ bearerAuth: [] }], summary: List owned refunds, responses: { '200': { description: Refunds } } } }
+  /api/v1/admin/refunds/{refundId}/decision: { post: { security: [{ bearerAuth: [] }], summary: Approve/reject after payment service refundable-balance enforcement, responses: { '200': { description: Refund result } } } }
+  /health/ready: { get: { responses: { '200': { description: Ready }, '503': { description: Not ready } } } }

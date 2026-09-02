@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerce-dev
+resources:
+  - ../../base
+  - namespace.yaml
+images:
+  - name: commerce/api-gateway
+    newName: commerce/api-gateway
+    newTag: dev
+  - name: commerce/identity-service
+    newName: commerce/identity-service
+    newTag: dev

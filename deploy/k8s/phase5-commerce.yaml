@@ -1,0 +1,221 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: phase5-service-config, namespace: commerce }
+data:
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  IDENTITY_TENANT_ID: default
+  CART_SERVICE_URL: http://cart-service:8088
+  PRICING_SERVICE_URL: http://pricing-service:8084
+  PROMOTION_SERVICE_URL: http://promotion-service:8090
+  INVENTORY_SERVICE_URL: http://inventory-service:8087
+  IDENTITY_SERVICE_URL: http://identity-service:8081
+  CATALOG_SERVICE_URL: http://catalog-service:8083
+  ORDER_SERVICE_URL: http://order-service:8091
+  PAYMENT_SERVICE_URL: http://payment-service:8092
+  SHIPPING_SERVICE_URL: http://shipping-service:8093
+  REFUND_SERVICE_URL: http://refund-service:8094
+  CHECKOUT_SERVICE_URL: http://checkout-service:8095
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: order-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: order-service } }
+  template:
+    metadata: { labels: { app: order-service } }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: order-service
+          image: commerce/order-service:latest
+          ports: [{ name: http, containerPort: 8091 }]
+          envFrom: [{ configMapRef: { name: phase5-service-config } }]
+          env:
+            - { name: ORDER_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: order-database-url } } }
+            - { name: ORDER_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-username } } }
+            - { name: ORDER_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+            - { name: INTERNAL_SERVICE_TOKEN, valueFrom: { secretKeyRef: { name: commerce-runtime, key: internal-service-token } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: order-service, namespace: commerce }
+spec: { selector: { app: order-service }, ports: [{ name: http, port: 8091, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: order-service, namespace: commerce }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: order-service }, minReplicas: 2, maxReplicas: 30, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: order-service, namespace: commerce }
+spec: { minAvailable: 1, selector: { matchLabels: { app: order-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: payment-service, namespace: commerce }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: payment-service } }
+  template:
+    metadata: { labels: { app: payment-service } }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: payment-service
+          image: commerce/payment-service:latest
+          ports: [{ name: http, containerPort: 8092 }]
+          envFrom: [{ configMapRef: { name: phase5-service-config } }]
+          env:
+            - { name: PAYMENT_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: payment-database-url } } }
+            - { name: PAYMENT_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-username } } }
+            - { name: PAYMENT_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+            - { name: INTERNAL_SERVICE_TOKEN, valueFrom: { secretKeyRef: { name: commerce-runtime, key: internal-service-token } } }
+            - { name: PAYMENT_PROVIDER_BASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: payment-provider-base-url } } }
+            - { name: PAYMENT_PROVIDER_API_KEY, valueFrom: { secretKeyRef: { name: commerce-runtime, key: payment-provider-api-key } } }
+            - { name: PAYMENT_PROVIDER_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: commerce-runtime, key: payment-provider-webhook-secret } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 300m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payment-service, namespace: commerce }
+spec: { selector: { app: payment-service }, ports: [{ name: http, port: 8092, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: payment-service, namespace: commerce }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: payment-service }, minReplicas: 3, maxReplicas: 40, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: payment-service, namespace: commerce }
+spec: { minAvailable: 2, selector: { matchLabels: { app: payment-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: shipping-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: shipping-service } }
+  template:
+    metadata: { labels: { app: shipping-service } }
+    spec:
+      containers:
+        - name: shipping-service
+          image: commerce/shipping-service:latest
+          ports: [{ name: http, containerPort: 8093 }]
+          envFrom: [{ configMapRef: { name: phase5-service-config } }]
+          env:
+            - { name: SHIPPING_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: shipping-database-url } } }
+            - { name: SHIPPING_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-username } } }
+            - { name: SHIPPING_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+            - { name: INTERNAL_SERVICE_TOKEN, valueFrom: { secretKeyRef: { name: commerce-runtime, key: internal-service-token } } }
+            - { name: SHIPPING_PROVIDER_BASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: shipping-provider-base-url } } }
+            - { name: SHIPPING_PROVIDER_API_KEY, valueFrom: { secretKeyRef: { name: commerce-runtime, key: shipping-provider-api-key } } }
+            - { name: SHIPPING_PROVIDER_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: commerce-runtime, key: shipping-provider-webhook-secret } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: shipping-service, namespace: commerce }
+spec: { selector: { app: shipping-service }, ports: [{ name: http, port: 8093, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: shipping-service, namespace: commerce }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: shipping-service }, minReplicas: 2, maxReplicas: 20, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: shipping-service, namespace: commerce }
+spec: { minAvailable: 1, selector: { matchLabels: { app: shipping-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: refund-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: refund-service } }
+  template:
+    metadata: { labels: { app: refund-service } }
+    spec:
+      containers:
+        - name: refund-service
+          image: commerce/refund-service:latest
+          ports: [{ name: http, containerPort: 8094 }]
+          envFrom: [{ configMapRef: { name: phase5-service-config } }]
+          env:
+            - { name: REFUND_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: refund-database-url } } }
+            - { name: REFUND_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-username } } }
+            - { name: REFUND_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: PAYMENT_SERVICE_URL, value: "http://payment-service:8092" }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+            - { name: INTERNAL_SERVICE_TOKEN, valueFrom: { secretKeyRef: { name: commerce-runtime, key: internal-service-token } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: refund-service, namespace: commerce }
+spec: { selector: { app: refund-service }, ports: [{ name: http, port: 8094, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: refund-service, namespace: commerce }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: refund-service }, minReplicas: 2, maxReplicas: 20, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: refund-service, namespace: commerce }
+spec: { minAvailable: 1, selector: { matchLabels: { app: refund-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: checkout-service, namespace: commerce }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: checkout-service } }
+  template:
+    metadata: { labels: { app: checkout-service } }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: checkout-service
+          image: commerce/checkout-service:latest
+          ports: [{ name: http, containerPort: 8095 }]
+          envFrom: [{ configMapRef: { name: phase5-service-config } }]
+          env:
+            - { name: CHECKOUT_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: checkout-database-url } } }
+            - { name: CHECKOUT_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-username } } }
+            - { name: CHECKOUT_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: DEFAULT_WAREHOUSE_ID, valueFrom: { secretKeyRef: { name: commerce-runtime, key: default-warehouse-id } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+            - { name: INTERNAL_SERVICE_TOKEN, valueFrom: { secretKeyRef: { name: commerce-runtime, key: internal-service-token } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 400m, memory: 768Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: checkout-service, namespace: commerce }
+spec: { selector: { app: checkout-service }, ports: [{ name: http, port: 8095, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: checkout-service, namespace: commerce }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: checkout-service }, minReplicas: 3, maxReplicas: 40, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: checkout-service, namespace: commerce }
+spec: { minAvailable: 2, selector: { matchLabels: { app: checkout-service } } }

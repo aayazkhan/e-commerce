@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info: { title: CMS Service API, version: 1.0.0 }
+servers: [{ url: 'http://localhost:8101' }]
+paths:
+  /api/v1/cms/pages/{slug}: { get: { operationId: getPublishedPage, parameters: [{ in: path, name: slug, required: true, schema: { type: string } }], responses: { '200': { description: Published page }, '404': { description: Not found } } } }
+  /api/v1/admin/cms/pages: { get: { operationId: listPages, security: [{ bearerAuth: [] }], responses: { '200': { description: Pages } } }, post: { operationId: createPage, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
+  /api/v1/admin/cms/pages/{id}/publish: { post: { operationId: publishPage, security: [{ bearerAuth: [] }], parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: Published }, '409': { description: Version conflict } } } }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }

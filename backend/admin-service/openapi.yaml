@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info: { title: Admin Service API, version: 1.0.0 }
+servers: [{ url: 'http://localhost:8104' }]
+paths:
+  /api/v1/admin/dashboard: { get: { operationId: getDashboard, security: [{ bearerAuth: [] }], responses: { '200': { description: Analytics projection } } } }
+  /api/v1/admin/products/bulk-publish: { post: { operationId: bulkPublishProducts, security: [{ bearerAuth: [] }], responses: { '202': { description: Durable job accepted } } } }
+  /api/v1/admin/jobs/{id}: { get: { operationId: getBulkJob, security: [{ bearerAuth: [] }], parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: Job status } } } }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }

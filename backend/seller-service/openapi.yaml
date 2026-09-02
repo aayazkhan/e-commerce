@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info: { title: Seller Service API, version: 1.0.0 }
+servers: [{ url: 'http://localhost:8100' }]
+paths:
+  /api/v1/seller/profile: { get: { operationId: getSellerProfile, security: [{ bearerAuth: [] }], responses: { '200': { description: Seller profile } } }, patch: { operationId: updateSellerProfile, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated profile }, '409': { description: Version conflict } } } }
+  /api/v1/seller/products: { get: { operationId: listOwnedProducts, security: [{ bearerAuth: [] }], responses: { '200': { description: Owned products } } }, post: { operationId: createOwnedProduct, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
+  /api/v1/seller/products/{productId}: { parameters: [{ in: path, name: productId, required: true, schema: { type: string } }], patch: { operationId: updateOwnedProduct, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated }, '403': { description: Ownership denied } } } }
+  /api/v1/seller/orders: { get: { operationId: listSellerOrders, security: [{ bearerAuth: [] }], responses: { '200': { description: Seller order projection } } } }
+  /api/v1/seller/ledger: { get: { operationId: listSellerLedger, security: [{ bearerAuth: [] }], responses: { '200': { description: Immutable ledger entries } } } }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }

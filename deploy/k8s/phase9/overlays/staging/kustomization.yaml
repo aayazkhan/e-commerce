@@ -1,0 +1,84 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerce-staging
+resources:
+  - ../../base
+  - namespace.yaml
+  - ingress-tls.example.yaml
+images:
+  # CI replaces this tag with the immutable release tag before apply.
+  - name: commerce/api-gateway
+    newName: ghcr.io/example/commerce/api-gateway
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/identity-service
+    newName: ghcr.io/example/commerce/identity-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/category-service
+    newName: ghcr.io/example/commerce/category-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/catalog-service
+    newName: ghcr.io/example/commerce/catalog-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/pricing-service
+    newName: ghcr.io/example/commerce/pricing-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/media-service
+    newName: ghcr.io/example/commerce/media-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/search-service
+    newName: ghcr.io/example/commerce/search-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/inventory-service
+    newName: ghcr.io/example/commerce/inventory-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/cart-service
+    newName: ghcr.io/example/commerce/cart-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/wishlist-service
+    newName: ghcr.io/example/commerce/wishlist-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/promotion-service
+    newName: ghcr.io/example/commerce/promotion-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/checkout-service
+    newName: ghcr.io/example/commerce/checkout-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/order-service
+    newName: ghcr.io/example/commerce/order-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/payment-service
+    newName: ghcr.io/example/commerce/payment-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/shipping-service
+    newName: ghcr.io/example/commerce/shipping-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/refund-service
+    newName: ghcr.io/example/commerce/refund-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/notification-service
+    newName: ghcr.io/example/commerce/notification-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/review-service
+    newName: ghcr.io/example/commerce/review-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/recommendation-service
+    newName: ghcr.io/example/commerce/recommendation-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/analytics-service
+    newName: ghcr.io/example/commerce/analytics-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/admin-service
+    newName: ghcr.io/example/commerce/admin-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/seller-service
+    newName: ghcr.io/example/commerce/seller-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/cms-service
+    newName: ghcr.io/example/commerce/cms-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/audit-service
+    newName: ghcr.io/example/commerce/audit-service
+    newTag: REPLACE_WITH_COMMIT_TAG
+  - name: commerce/feature-flag-service
+    newName: ghcr.io/example/commerce/feature-flag-service
+    newTag: REPLACE_WITH_COMMIT_TAG

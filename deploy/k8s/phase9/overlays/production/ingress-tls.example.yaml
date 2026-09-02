@@ -1,0 +1,25 @@
+# Example only. Replace host/issuer and validate the gateway routing contract
+# before enabling public production traffic.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: commerce-api
+  namespace: commerce
+  annotations:
+    cert-manager.io/cluster-issuer: commerce-production
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [api.example.invalid]
+      secretName: commerce-api-production-tls
+  rules:
+    - host: api.example.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080

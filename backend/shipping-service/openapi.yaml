@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info: { title: Shipping Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }, internalToken: { type: apiKey, in: header, name: X-Internal-Service-Token } }
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+paths:
+  /api/v1/shipping/quotes: { post: { security: [{ bearerAuth: [] }], summary: Get a provider shipping quote, responses: { '200': { description: Shipping quote } } } }
+  /api/v1/internal/shipping/shipments: { post: { security: [{ internalToken: [] }], summary: Create a provider shipment, parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }], responses: { '201': { description: Shipment } } } }
+  /api/v1/shipping/shipments/{shipmentId}: { get: { security: [{ bearerAuth: [] }], summary: Read an owned shipment, responses: { '200': { description: Shipment } } } }
+  /api/v1/shipping/webhooks: { post: { summary: Verify provider tracking webhook, responses: { '200': { description: Tracking applied } } } }
+  /health/ready: { get: { responses: { '200': { description: Ready }, '503': { description: Not ready } } } }

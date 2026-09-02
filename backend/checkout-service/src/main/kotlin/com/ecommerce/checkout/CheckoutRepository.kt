@@ -1,0 +1,32 @@
+package com.ecommerce.checkout
+
+import com.ecommerce.platform.common.CommerceId
+import com.ecommerce.platform.error.ApiException
+import com.ecommerce.platform.error.ErrorCode
+import com.ecommerce.platform.service.ServiceOutboxRecord
+import com.ecommerce.platform.service.ServiceOutboxStore
+import com.ecommerce.platform.service.newOutboxId
+import kotlinx.serialization.json.Json
+import java.security.MessageDigest
+import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.Timestamp
+import java.time.Instant
+import javax.sql.DataSource
+
+class CheckoutRepository(private val dataSource:DataSource):ServiceOutboxStore{
+    private val json=Json{encodeDefaults=true;explicitNulls=false;ignoreUnknownKeys=true}
+    fun start(userId:String,request:CheckoutRequest,key:String):CheckoutResponse{val hash=sha(json.encodeToString(request));return transaction{c->val prior=c.prepareStatement("SELECT request_hash,checkout_id FROM checkout_idempotency WHERE user_id=? AND idempotency_key=?").use{s->s.setString(1,userId);s.setString(2,key);s.executeQuery().use{r->if(r.next()){if(r.getString(1)!=hash)throw ApiException(ErrorCode.CONFLICT,"Checkout idempotency key was reused with a different request.",409);return@transaction response(c,r.getString(2))!!}else null}};val id=CommerceId.new("chk").value;val now=Instant.now();c.prepareStatement("INSERT INTO checkout_sagas(id,user_id,request_json,request_hash,idempotency_key,status,current_step,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").use{s->s.setString(1,id);s.setString(2,userId);s.setString(3,json.encodeToString(request));s.setString(4,hash);s.setString(5,key);s.setString(6,CheckoutStatus.CREATED.name);s.setString(7,CheckoutStep.VALIDATE_CART.name);s.setTimestamp(8,now.ts());s.setTimestamp(9,now.ts());s.executeUpdate()};c.prepareStatement("INSERT INTO checkout_idempotency(id,user_id,idempotency_key,request_hash,checkout_id,created_at) VALUES(?,?,?,?,?,?)").use{s->s.setString(1,CommerceId.new("cid").value);s.setString(2,userId);s.setString(3,key);s.setString(4,hash);s.setString(5,id);s.setTimestamp(6,now.ts());s.executeUpdate()};response(c,id)!!}}
+    fun get(id:String)=withConnection{response(it,id)}
+    fun getOwned(userId:String,id:String)=withConnection{c->c.prepareStatement("SELECT id FROM checkout_sagas WHERE id=? AND user_id=?").use{s->s.setString(1,id);s.setString(2,userId);s.executeQuery().use{r->if(r.next())response(c,id)else null}}}
+    fun checkpoint(id:String,status:CheckoutStatus,step:CheckoutStep,reservationId:String?=null,orderId:String?=null,promotionId:String?=null,paymentId:String?=null,paymentStatus:String?=null,paymentSecret:String?=null,shipmentId:String?=null,totals:CheckoutTotals?=null,error:String?=null){transaction{c->val now=Instant.now();c.prepareStatement("UPDATE checkout_sagas SET status=?,current_step=?,reservation_id=COALESCE(?,reservation_id),order_id=COALESCE(?,order_id),promotion_redemption_id=COALESCE(?,promotion_redemption_id),payment_id=COALESCE(?,payment_id),payment_status=COALESCE(?,payment_status),payment_client_secret=COALESCE(?,payment_client_secret),shipment_id=COALESCE(?,shipment_id),subtotal_minor=COALESCE(?,subtotal_minor),promotion_discount_minor=COALESCE(?,promotion_discount_minor),shipping_minor=COALESCE(?,shipping_minor),tax_minor=COALESCE(?,tax_minor),total_minor=COALESCE(?,total_minor),currency=COALESCE(?,currency),last_error=?,attempt=attempt+1,version=version+1,updated_at=? WHERE id=?").use{s->s.setString(1,status.name);s.setString(2,step.name);s.setString(3,reservationId);s.setString(4,orderId);s.setString(5,promotionId);s.setString(6,paymentId);s.setString(7,paymentStatus);s.setString(8,paymentSecret);s.setString(9,shipmentId);s.setObject(10,totals?.subtotalMinor);s.setObject(11,totals?.promotionDiscountMinor);s.setObject(12,totals?.shippingMinor);s.setObject(13,totals?.taxMinor);s.setObject(14,totals?.totalMinor);s.setString(15,totals?.currency);s.setString(16,error);s.setTimestamp(17,now.ts());s.setString(18,id);s.executeUpdate()}}}
+    fun fail(id:String,message:String,recoverable:Boolean)=checkpoint(id,if(recoverable)CheckoutStatus.RECOVERABLE else CheckoutStatus.FAILED,CheckoutStep.COMPLETE,error=message.take(1000))
+    private fun response(c:Connection,id:String):CheckoutResponse?=c.prepareStatement("SELECT * FROM checkout_sagas WHERE id=?").use{s->s.setString(1,id);s.executeQuery().use{r->if(r.next())response(r)else null}}
+    private fun response(r:ResultSet)=CheckoutResponse(r.getString("id"),CheckoutStatus.valueOf(r.getString("status")),CheckoutStep.valueOf(r.getString("current_step")),r.getString("order_id"),r.getString("reservation_id"),r.getString("promotion_redemption_id"),r.getString("payment_id")?.let{CheckoutPayment(it,r.getString("payment_status")?:"PROCESSING",r.getString("payment_client_secret"))},if(r.getObject("total_minor")!=null)CheckoutTotals(r.getLong("subtotal_minor"),0,r.getLong("promotion_discount_minor"),r.getLong("shipping_minor"),r.getLong("tax_minor"),r.getLong("total_minor"),r.getString("currency"))else null,r.getString("last_error"),r.getTimestamp("created_at").toInstant().toString(),r.getTimestamp("updated_at").toInstant().toString())
+    override fun unpublished(limit:Int):List<ServiceOutboxRecord> = withConnection{c->c.prepareStatement("SELECT id,aggregate_id,event_type,schema_version,occurred_at,correlation_id,payload_json::text FROM checkout_outbox_events WHERE published_at IS NULL ORDER BY occurred_at LIMIT ?").use{s->s.setInt(1,limit);s.executeQuery().use{r->buildList{while(r.next())add(ServiceOutboxRecord(r.getString(1),"Checkout",r.getString(2),r.getString(3),r.getInt(4),r.getTimestamp(5).toInstant(),r.getString(6),r.getString(7)))}}}}
+    override fun markPublished(ids:List<String>,publishedAt:Instant){if(ids.isEmpty())return;transaction{c->c.prepareStatement("UPDATE checkout_outbox_events SET published_at=? WHERE id=ANY(?)").use{s->s.setTimestamp(1,publishedAt.ts());s.setArray(2,c.createArrayOf("varchar",ids.toTypedArray()));s.executeUpdate()}}}
+    private fun sha(v:String)=MessageDigest.getInstance("SHA-256").digest(v.toByteArray()).joinToString(""){ "%02x".format(it) }
+    private fun <T>withConnection(block:(Connection)->T):T=dataSource.connection.use(block)
+    private fun <T>transaction(block:(Connection)->T):T=dataSource.connection.use{c->c.autoCommit=false;try{block(c).also{c.commit()}}catch(e:Throwable){c.rollback();throw e}}
+}
+private fun Instant.ts()=Timestamp.from(this)

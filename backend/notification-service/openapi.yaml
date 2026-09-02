@@ -1,0 +1,7 @@
+openapi: 3.0.3
+info: { title: Notification Service API, version: 1.0.0 }
+paths:
+  /health/live: { get: { responses: { '200': { description: live } } } }
+  /api/v1/notifications/preferences: { get: { responses: { '200': { description: preferences } } }, put: { responses: { '200': { description: updated } } } }
+  /api/v1/notifications/in-app: { get: { responses: { '200': { description: notifications } } } }
+  /api/v1/providers/webhook: { post: { responses: { '202': { description: accepted } } } }

@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info: { title: Category Service API, version: 1.0.0 }
+servers: [{ url: / }]
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+  parameters: { categoryId: { name: categoryId, in: path, required: true, schema: { type: string } } }
+  schemas:
+    Category: { type: object, required: [id, name, slug, status], properties: { id: { type: string }, parentId: { type: string, nullable: true }, name: { type: string }, slug: { type: string }, status: { type: string, enum: [DRAFT, ACTIVE, INACTIVE, ARCHIVED] }, sortOrder: { type: integer }, version: { type: integer, format: int64 } } }
+paths:
+  /api/v1/categories: { get: { summary: List active root/child categories, parameters: [{ name: parentId, in: query, schema: { type: string } }], responses: { '200': { description: Categories } } } }
+  /api/v1/categories/tree: { get: { summary: Get cached active category tree, responses: { '200': { description: Tree } } } }
+  /api/v1/categories/{categoryId}: { get: { summary: Get category, parameters: [{ $ref: '#/components/parameters/categoryId' }], responses: { '200': { description: Category } } } }
+  /api/v1/categories/{categoryId}/children: { get: { summary: List children, parameters: [{ $ref: '#/components/parameters/categoryId' }], responses: { '200': { description: Children } } } }
+  /api/v1/admin/categories: { post: { security: [{ bearerAuth: [] }], summary: Create category, responses: { '201': { description: Created } } } }
+  /api/v1/admin/categories/{categoryId}: { patch: { security: [{ bearerAuth: [] }], summary: Update category, responses: { '200': { description: Updated } } }, delete: { security: [{ bearerAuth: [] }], summary: Delete leaf category, responses: { '200': { description: Deleted } } } }
+  /api/v1/admin/categories/{categoryId}/publish: { post: { security: [{ bearerAuth: [] }], summary: Publish category, responses: { '200': { description: Published } } } }
+  /api/v1/admin/categories/{categoryId}/unpublish: { post: { security: [{ bearerAuth: [] }], summary: Unpublish category, responses: { '200': { description: Unpublished } } } }
+  /api/v1/admin/categories/reorder: { patch: { security: [{ bearerAuth: [] }], summary: Reorder siblings, responses: { '200': { description: Reordered } } } }

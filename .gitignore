@@ -1,0 +1,63 @@
+cat > .gitignore <<'EOF'
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Kotlin Multiplatform
+.kotlin/
+.kotlin-native/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Local configuration
+local.properties
+
+# macOS
+.DS_Store
+
+# Kotlin/Native
+.konan/
+
+# Compose Multiplatform
+composeApp/build/
+shared/build/
+
+# Android
+.externalNativeBuild/
+.cxx/
+
+# Generated files
+captures/
+output-metadata.json
+
+# Signing / secrets
+*.jks
+*.keystore
+key.properties
+
+# Environment / secrets
+#.env
+#.env.*
+#!.env.example
+
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Node (if used by the project)
+node_modules/
+
+# Temporary files
+*.log
+*.tmp
+EOF

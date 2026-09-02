@@ -1,0 +1,14 @@
+# Apply only after the cluster's namespace labels, storage classes, and ingress
+# paths are reviewed. Values are starting controls, not measured capacity.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: commerce-runtime-quota
+  namespace: commerce
+spec:
+  hard:
+    requests.cpu: "40"
+    requests.memory: 80Gi
+    limits.cpu: "80"
+    limits.memory: 160Gi
+    pods: "100"

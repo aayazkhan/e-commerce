@@ -1,0 +1,7 @@
+openapi: 3.0.3
+info: { title: Review Service API, version: 1.0.0 }
+paths:
+  /api/v1/reviews: { post: { responses: { '201': { description: created } } } }
+  /api/v1/reviews/products/{id}: { get: { parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: page } } } }
+  /api/v1/reviews/sellers/{id}: { get: { parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: page } } } }
+  /api/v1/admin/reviews/{id}/moderation: { patch: { responses: { '200': { description: moderated } } } }

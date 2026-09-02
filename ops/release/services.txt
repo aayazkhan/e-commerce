@@ -1,0 +1,26 @@
+# service|Dockerfile path relative to repository root
+api-gateway|infrastructure/docker/api-gateway.Dockerfile
+identity-service|infrastructure/docker/identity-service.Dockerfile
+category-service|infrastructure/docker/category-service.Dockerfile
+catalog-service|infrastructure/docker/catalog-service.Dockerfile
+pricing-service|infrastructure/docker/pricing-service.Dockerfile
+media-service|infrastructure/docker/media-service.Dockerfile
+search-service|infrastructure/docker/search-service.Dockerfile
+inventory-service|backend/inventory-service/Dockerfile
+cart-service|backend/cart-service/Dockerfile
+wishlist-service|backend/wishlist-service/Dockerfile
+promotion-service|backend/promotion-service/Dockerfile
+checkout-service|backend/checkout-service/Dockerfile
+order-service|backend/order-service/Dockerfile
+payment-service|backend/payment-service/Dockerfile
+shipping-service|backend/shipping-service/Dockerfile
+refund-service|backend/refund-service/Dockerfile
+notification-service|backend/notification-service/Dockerfile
+review-service|backend/review-service/Dockerfile
+recommendation-service|backend/recommendation-service/Dockerfile
+analytics-service|backend/analytics-service/Dockerfile
+admin-service|backend/admin-service/Dockerfile
+seller-service|backend/seller-service/Dockerfile
+cms-service|backend/cms-service/Dockerfile
+audit-service|backend/audit-service/Dockerfile
+feature-flag-service|backend/feature-flag-service/Dockerfile

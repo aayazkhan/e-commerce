@@ -1,0 +1,85 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerce
+resources:
+  - ../../base
+  - resource-governance.yaml
+  - ingress-tls.example.yaml
+images:
+  # Replace each placeholder with the registry image and immutable commit tag
+  # or digest in the release workspace. Production must never apply `latest`.
+  - name: commerce/api-gateway
+    newName: ghcr.io/example/commerce/api-gateway
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/identity-service
+    newName: ghcr.io/example/commerce/identity-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/category-service
+    newName: ghcr.io/example/commerce/category-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/catalog-service
+    newName: ghcr.io/example/commerce/catalog-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/pricing-service
+    newName: ghcr.io/example/commerce/pricing-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/media-service
+    newName: ghcr.io/example/commerce/media-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/search-service
+    newName: ghcr.io/example/commerce/search-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/inventory-service
+    newName: ghcr.io/example/commerce/inventory-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/cart-service
+    newName: ghcr.io/example/commerce/cart-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/wishlist-service
+    newName: ghcr.io/example/commerce/wishlist-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/promotion-service
+    newName: ghcr.io/example/commerce/promotion-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/checkout-service
+    newName: ghcr.io/example/commerce/checkout-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/order-service
+    newName: ghcr.io/example/commerce/order-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/payment-service
+    newName: ghcr.io/example/commerce/payment-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/shipping-service
+    newName: ghcr.io/example/commerce/shipping-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/refund-service
+    newName: ghcr.io/example/commerce/refund-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/notification-service
+    newName: ghcr.io/example/commerce/notification-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/review-service
+    newName: ghcr.io/example/commerce/review-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/recommendation-service
+    newName: ghcr.io/example/commerce/recommendation-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/analytics-service
+    newName: ghcr.io/example/commerce/analytics-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/admin-service
+    newName: ghcr.io/example/commerce/admin-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/seller-service
+    newName: ghcr.io/example/commerce/seller-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/cms-service
+    newName: ghcr.io/example/commerce/cms-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/audit-service
+    newName: ghcr.io/example/commerce/audit-service
+    digest: REPLACE_WITH_IMAGE_DIGEST
+  - name: commerce/feature-flag-service
+    newName: ghcr.io/example/commerce/feature-flag-service
+    digest: REPLACE_WITH_IMAGE_DIGEST

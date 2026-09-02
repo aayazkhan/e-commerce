@@ -1,0 +1,83 @@
+name: backend-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build and unit test with coverage reports
+        run: ./gradlew clean build jacocoTestReport --no-daemon
+      - name: Enforce aggregate 100 percent line and branch coverage gate
+        run: ./gradlew jacocoTestCoverageVerification --no-daemon
+      - name: Publish test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase10-unit-and-coverage-reports
+          if-no-files-found: warn
+          path: |
+            build/reports/jacoco/aggregate/**
+            build/reports/problems/**
+            backend/**/build/reports/tests/**
+            backend/**/build/test-results/**
+      - name: Validate Kubernetes YAML
+        shell: bash
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 - <<'PY'
+          import pathlib, yaml
+          for path in pathlib.Path('deploy/k8s').rglob('*.yaml'):
+              with path.open() as handle:
+                  docs = list(yaml.safe_load_all(handle))
+              assert all(doc and doc.get('apiVersion') and doc.get('kind') for doc in docs), path
+          PY
+      - name: Validate API contracts and release image map
+        run: ./tests/contracts/validate-contracts.sh
+      - name: Scan source for high-risk credential literals
+        run: |
+          ! rg -n --hidden -g '!**/build/**' -g '!gradle/wrapper/**' \
+            '(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----)' .
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Dependency report
+        run: ./gradlew dependencies --no-daemon > dependency-report.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report
+          path: dependency-report.txt

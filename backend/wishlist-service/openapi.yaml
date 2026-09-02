@@ -1,0 +1,7 @@
+openapi: 3.0.3
+info: { title: Wishlist Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+paths:
+  /api/v1/wishlist: { get: { security: [{ bearerAuth: [] }], summary: Cursor-paginated wishlist with live price and availability, responses: { '200': { description: Wishlist page } } }, post: { security: [{ bearerAuth: [] }], summary: Add a variant idempotently through database uniqueness, responses: { '201': { description: Wishlist item } } }, delete: { security: [{ bearerAuth: [] }], summary: Clear wishlist, responses: { '200': { description: Clear result } } } }
+  /api/v1/wishlist/{variantId}: { delete: { security: [{ bearerAuth: [] }], summary: Remove an owned variant, responses: { '200': { description: Removal result } } } }

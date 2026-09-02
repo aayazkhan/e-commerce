@@ -1,0 +1,165 @@
+name: release-and-deploy
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Immutable image tag; defaults to commit SHA
+        required: false
+        type: string
+      promote_production:
+        description: Promote the already-built release after environment approval
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - run: ./gradlew clean build --no-daemon
+      - run: ./tests/contracts/validate-contracts.sh
+      - uses: azure/setup-kubectl@v4
+      - name: Render staging contract with immutable tag
+        run: |
+          DEPLOY_ENVIRONMENT=staging IMAGE_TAG="$IMAGE_TAG" ops/release/validate-release.sh staging >/dev/null
+
+  build-images:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build, scan metadata, attest SBOM/provenance, and push
+        env:
+          RELEASE_TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+          : > image-digests.env
+          while IFS='|' read -r service dockerfile; do
+            [[ -z "$service" || "$service" == \#* ]] && continue
+            metadata="$(mktemp)"
+            docker buildx build \
+              --file "$dockerfile" \
+              --tag "$REGISTRY/commerce/$service:$RELEASE_TAG" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              --label "org.opencontainers.image.version=${RELEASE_TAG}" \
+              --cache-from "type=gha,scope=$service" \
+              --cache-to "type=gha,mode=max,scope=$service" \
+              --provenance=true \
+              --sbom=true \
+              --metadata-file "$metadata" \
+              --push .
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$HOME/.docker:/root/.docker:ro" \
+              aquasec/trivy:0.58.1 image \
+              --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
+              "$REGISTRY/commerce/$service:$RELEASE_TAG"
+            digest="$(jq -r '."containerimage.digest" // empty' "$metadata")"
+            [[ "$digest" == sha256:* ]] || { echo "missing digest for $service" >&2; exit 1; }
+            echo "$service=$REGISTRY/commerce/$service@$digest" >> image-digests.env
+            rm -f "$metadata"
+          done < ops/release/services.txt
+      - name: Generate release metadata
+        run: |
+          RELEASE_VERSION="${GITHUB_REF_NAME:-$IMAGE_TAG}" \
+          GIT_COMMIT="$GITHUB_SHA" \
+          IMAGE_TAG="$IMAGE_TAG" \
+          RELEASE_ENVIRONMENT=staging \
+          ops/release/release-metadata.sh > release-metadata.json
+      - name: Render production contract with image digests
+        env:
+          DEPLOY_ENVIRONMENT: production
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          IMAGE_DIGESTS_FILE: image-digests.env
+          REQUIRE_DIGESTS: 'true'
+        run: ops/release/validate-release.sh production >/dev/null
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: source-sbom.cdx.json
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ env.IMAGE_TAG }}
+          path: |
+            image-digests.env
+            release-metadata.json
+            source-sbom.cdx.json
+
+  deploy-staging:
+    if: ${{ vars.ENABLE_STAGING_DEPLOY == 'true' }}
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-${{ env.IMAGE_TAG }}
+      - uses: azure/setup-kubectl@v4
+      - name: Deploy and wait for rollout
+        env:
+          KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
+          DEPLOY_ENVIRONMENT: staging
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          KUBE_NAMESPACE: commerce-staging
+        run: ops/release/deploy.sh staging
+      - name: Safe smoke test
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: ops/release/smoke.sh
+
+  deploy-production:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_production == true }}
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-${{ env.IMAGE_TAG }}
+      - uses: azure/setup-kubectl@v4
+      - name: Require complete digest evidence
+        run: test "$(grep -cve '^[[:space:]]*$' -e '^[[:space:]]*#' image-digests.env)" -eq "$(grep -cve '^[[:space:]]*$' -e '^[[:space:]]*#' ops/release/services.txt)"
+      - name: Deploy approved immutable release
+        env:
+          KUBECONFIG: ${{ secrets.PRODUCTION_KUBECONFIG }}
+          DEPLOY_ENVIRONMENT: production
+          PRODUCTION_APPROVED: 'true'
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          IMAGE_DIGESTS_FILE: image-digests.env
+          REQUIRE_DIGESTS: 'true'
+          KUBE_NAMESPACE: commerce
+        run: ops/release/deploy.sh production
+      - name: Safe smoke test
+        env:
+          BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+        run: ops/release/smoke.sh

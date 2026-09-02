@@ -1,0 +1,159 @@
+openapi: 3.1.0
+info:
+  title: Commerce Identity API
+  version: 1.0.0
+  description: Authentication, user lifecycle, customer profile, session, and address API.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      security: []
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Authenticated, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResponse' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/refresh:
+    post:
+      security: []
+      operationId: refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200': { description: Rotated tokens, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResponse' } } } }
+  /auth/logout:
+    post:
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/oauth/{provider}:
+    post:
+      security: []
+      operationId: oauthLogin
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [google, apple] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthRequest' }
+      responses:
+        '200': { description: Authenticated, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResponse' } } } }
+  /users/me:
+    get:
+      operationId: getCurrentUser
+      responses: { '200': { description: User, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } } }
+    patch:
+      operationId: updateCurrentUser
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileRequest' }
+      responses: { '200': { description: Updated profile, content: { application/json: { schema: { $ref: '#/components/schemas/Profile' } } } } }
+    delete:
+      operationId: deactivateCurrentUser
+      responses: { '200': { $ref: '#/components/responses/Message' } }
+  /profile:
+    get:
+      operationId: getProfile
+      responses: { '200': { description: Profile, content: { application/json: { schema: { $ref: '#/components/schemas/Profile' } } } } }
+    patch:
+      operationId: updateProfile
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileRequest' }
+      responses: { '200': { description: Profile, content: { application/json: { schema: { $ref: '#/components/schemas/Profile' } } } } }
+  /addresses:
+    get:
+      operationId: listAddresses
+      responses: { '200': { description: Addresses, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Address' } } } } } }
+    post:
+      operationId: createAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressRequest' }
+      responses: { '201': { description: Address, content: { application/json: { schema: { $ref: '#/components/schemas/Address' } } } } }
+  /addresses/{addressId}:
+    parameters: [{ name: addressId, in: path, required: true, schema: { type: string } }]
+    patch:
+      operationId: updateAddress
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressRequest' }
+      responses: { '200': { description: Address, content: { application/json: { schema: { $ref: '#/components/schemas/Address' } } } } }
+    delete:
+      operationId: deleteAddress
+      responses: { '200': { $ref: '#/components/responses/Message' } }
+  /addresses/{addressId}/default:
+    post:
+      operationId: setDefaultAddress
+      parameters: [{ name: addressId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: Address, content: { application/json: { schema: { $ref: '#/components/schemas/Address' } } } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Error: { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Message: { description: Message, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [password, firstName, lastName]
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string }
+        password: { type: string, format: password, minLength: 12 }
+        firstName: { type: string }
+        lastName: { type: string }
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string }
+        password: { type: string, format: password }
+        deviceId: { type: string }
+        platform: { type: string }
+        appVersion: { type: string }
+    RefreshRequest: { type: object, required: [refreshToken], properties: { refreshToken: { type: string } } }
+    LogoutRequest: { type: object, properties: { sessionId: { type: string }, allSessions: { type: boolean } } }
+    OAuthRequest: { type: object, required: [credential], properties: { credential: { type: string }, deviceId: { type: string }, platform: { type: string }, appVersion: { type: string } } }
+    AuthResponse: { type: object, required: [accessToken, refreshToken, expiresIn, tokenType, sessionId, user], properties: { accessToken: { type: string }, refreshToken: { type: string }, expiresIn: { type: integer }, tokenType: { type: string }, sessionId: { type: string }, user: { $ref: '#/components/schemas/User' } } }
+    User: { type: object, required: [id, status, roles, permissions], properties: { id: { type: string }, email: { type: string, nullable: true }, phone: { type: string, nullable: true }, status: { type: string }, roles: { type: array, items: { type: string } }, permissions: { type: array, items: { type: string } }, emailVerified: { type: boolean }, phoneVerified: { type: boolean } } }
+    ProfileRequest: { type: object, properties: { firstName: { type: string }, lastName: { type: string }, preferredLanguage: { type: string }, preferredCurrency: { type: string }, marketingEmail: { type: boolean }, marketingSms: { type: boolean }, marketingPush: { type: boolean } } }
+    Profile: { type: object, properties: { userId: { type: string }, firstName: { type: string }, lastName: { type: string }, preferredLanguage: { type: string }, preferredCurrency: { type: string }, marketingEmail: { type: boolean }, marketingSms: { type: boolean }, marketingPush: { type: boolean } } }
+    AddressRequest: { type: object, required: [label, recipientName, phone, line1, city, state, postalCode, country], properties: { label: { type: string, enum: [HOME, WORK, OTHER] }, recipientName: { type: string }, phone: { type: string }, line1: { type: string }, line2: { type: string }, city: { type: string }, state: { type: string }, postalCode: { type: string }, country: { type: string, minLength: 2, maxLength: 2 }, latitude: { type: number }, longitude: { type: number }, isDefault: { type: boolean } } }
+    Address: { allOf: [{ $ref: '#/components/schemas/AddressRequest' }, { type: object, required: [id, isDefault], properties: { id: { type: string } } }] }
+    Message: { type: object, required: [message], properties: { message: { type: string } } }
+    Error: { type: object, required: [code, message, requestId], properties: { code: { type: string }, message: { type: string }, requestId: { type: string }, retryable: { type: boolean } } }

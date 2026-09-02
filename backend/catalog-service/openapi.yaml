@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info: { title: Catalog Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+paths:
+  /api/v1/products: { get: { summary: Cursor-paginated active products, parameters: [{ name: cursor, in: query, schema: { type: string } }, { name: limit, in: query, schema: { type: integer, maximum: 100 } }, { name: categoryId, in: query, schema: { type: string } }, { name: sellerId, in: query, schema: { type: string } }], responses: { '200': { description: Product page } } }, post: { security: [{ bearerAuth: [] }], summary: Create seller/admin product with variants and media references, responses: { '201': { description: Created } } } }
+  /api/v1/products/{productId}: { get: { summary: Get active product, responses: { '200': { description: Product } } }, patch: { security: [{ bearerAuth: [] }], summary: Update owned product, responses: { '200': { description: Updated } } }, delete: { security: [{ bearerAuth: [] }], summary: Archive owned product, responses: { '200': { description: Archived } } } }
+  /api/v1/products/slug/{slug}: { get: { summary: Get active product by stable slug, responses: { '200': { description: Product } } } }
+  /api/v1/products/{productId}/publish: { post: { security: [{ bearerAuth: [] }], summary: Publish product, responses: { '200': { description: Published } } } }
+  /api/v1/products/{productId}/unpublish: { post: { security: [{ bearerAuth: [] }], summary: Unpublish product, responses: { '200': { description: Unpublished } } } }

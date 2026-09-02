@@ -1,0 +1,7 @@
+openapi: 3.0.3
+info: { title: Audit Service API, version: 1.0.0 }
+servers: [{ url: 'http://localhost:8102' }]
+paths:
+  /api/v1/admin/audit: { get: { operationId: searchAudit, security: [{ bearerAuth: [] }], responses: { '200': { description: Append-only audit page } } }, post: { operationId: recordAudit, security: [{ bearerAuth: [] }], responses: { '200': { description: Audit record } } } }
+  /api/v1/admin/audit/{auditId}: { get: { operationId: getAudit, security: [{ bearerAuth: [] }], parameters: [{ in: path, name: auditId, required: true, schema: { type: string } }], responses: { '200': { description: Audit event } } } }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }

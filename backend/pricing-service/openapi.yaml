@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info: { title: Pricing Service API, version: 1.0.0 }
+components: { securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } } }
+paths:
+  /api/v1/pricing/products/{productId}: { get: { summary: Resolve effective price, parameters: [{ name: productId, in: path, required: true, schema: { type: string } }, { name: variantId, in: query, schema: { type: string } }, { name: currency, in: query, schema: { type: string, example: INR } }, { name: country, in: query, schema: { type: string, example: IN } }], responses: { '200': { description: Price in minor units } } } }
+  /api/v1/pricing/quote: { post: { summary: Calculate deterministic batch quote, responses: { '200': { description: Quote with subtotal, tax, total and price versions } } } }
+  /api/v1/admin/pricing: { post: { security: [{ bearerAuth: [] }], summary: Create auditable price version, responses: { '201': { description: Created } } } }
+  /api/v1/admin/pricing/{priceId}: { patch: { security: [{ bearerAuth: [] }], summary: Update price with history snapshot, responses: { '200': { description: Updated } } }, delete: { security: [{ bearerAuth: [] }], summary: Retire price, responses: { '200': { description: Retired } } } }

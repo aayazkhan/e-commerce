@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info: { title: Order Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }, internalToken: { type: apiKey, in: header, name: X-Internal-Service-Token } }
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+paths:
+  /api/v1/orders: { post: { security: [{ internalToken: [], bearerAuth: [] }], summary: Create a server-priced order snapshot, parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }], responses: { '201': { description: Order snapshot } } } }
+  /api/v1/orders/{orderId}: { get: { security: [{ bearerAuth: [] }], summary: Read an owned order, responses: { '200': { description: Order } } } }
+  /api/v1/orders/{orderId}/cancel: { post: { security: [{ bearerAuth: [] }], summary: Request cancellation, responses: { '200': { description: Updated order } } } }
+  /api/v1/orders/{orderId}/returns: { post: { security: [{ bearerAuth: [] }], summary: Request a return, responses: { '201': { description: Return request } } } }
+  /api/v1/internal/orders/{orderId}/status: { post: { security: [{ internalToken: [] }], summary: Advance an order through its state machine, responses: { '200': { description: Updated order } } } }
+  /api/v1/admin/orders: { get: { security: [{ bearerAuth: [] }], summary: List orders for operations, responses: { '200': { description: Cursor page } } } }
+  /api/v1/admin/orders/{orderId}/status: { post: { security: [{ bearerAuth: [] }], summary: Admin status transition, responses: { '200': { description: Updated order } } } }
+  /health/ready: { get: { responses: { '200': { description: Ready }, '503': { description: Not ready } } } }

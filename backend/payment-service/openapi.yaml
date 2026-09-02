@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info: { title: Payment Service API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }, internalToken: { type: apiKey, in: header, name: X-Internal-Service-Token } }
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+paths:
+  /api/v1/payments: { post: { security: [{ bearerAuth: [] }], summary: Create a tokenized payment intent, parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }], responses: { '201': { description: Payment intent } } } }
+  /api/v1/payments/{paymentId}: { get: { security: [{ bearerAuth: [] }], summary: Read an owned payment, responses: { '200': { description: Payment } } } }
+  /api/v1/internal/payments: { post: { security: [{ internalToken: [] }], summary: Create payment from checkout, responses: { '201': { description: Payment } } } }
+  /api/v1/internal/payments/{paymentId}/refund: { post: { security: [{ internalToken: [] }], summary: Enforce refundable balance and request provider refund, responses: { '200': { description: Refund result } } } }
+  /api/v1/payments/webhooks/{provider}: { post: { summary: Verify and apply provider webhook, responses: { '200': { description: Applied webhook } } } }
+  /health/ready: { get: { responses: { '200': { description: Ready }, '503': { description: Not ready } } } }

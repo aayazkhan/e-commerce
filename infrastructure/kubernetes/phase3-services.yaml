@@ -1,0 +1,226 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: commerce-phase3-config
+data:
+  CATEGORY_REDIS_URL: redis://redis:6379
+  CATALOG_REDIS_URL: redis://redis:6379
+  PRICING_REDIS_URL: redis://redis:6379
+  OPENSEARCH_URL: http://opensearch:9200
+  CATALOG_BASE_URL: http://catalog-service:8083
+  MEDIA_S3_BUCKET: commerce-media
+  MEDIA_S3_ENDPOINT: https://s3.amazonaws.com
+  MEDIA_PUBLIC_BASE_URL: https://cdn.example.com/media
+  JWT_ISSUER: commerce-identity
+  JWT_AUDIENCE: commerce-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: category-service, labels: { app: category-service } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: category-service } }
+  template:
+    metadata: { labels: { app: category-service } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: category-service
+          image: commerce/category-service:local
+          ports: [{ name: http, containerPort: 8082 }]
+          envFrom: [{ configMapRef: { name: commerce-phase3-config } }]
+          env:
+            - { name: CATEGORY_DATABASE_URL, valueFrom: { secretKeyRef: { name: category-service-secrets, key: database-url } } }
+            - { name: CATEGORY_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: category-service-secrets, key: database-username } } }
+            - { name: CATEGORY_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: category-service-secrets, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-identity-secrets, key: jwt-keys } } }
+            - { name: KAFKA_BOOTSTRAP_SERVERS, valueFrom: { secretKeyRef: { name: commerce-kafka-secrets, key: bootstrap-servers } } }
+            - { name: IDENTITY_TENANT_ID, valueFrom: { secretKeyRef: { name: commerce-tenant-secrets, key: tenant-id } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 8 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: 1000m, memory: 768Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: category-service }
+spec: { selector: { app: category-service }, ports: [{ name: http, port: 8082, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: category-service }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: category-service }, minReplicas: 2, maxReplicas: 10, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: category-service }
+spec: { minAvailable: 1, selector: { matchLabels: { app: category-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: catalog-service, labels: { app: catalog-service } }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: catalog-service } }
+  template:
+    metadata: { labels: { app: catalog-service } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: catalog-service
+          image: commerce/catalog-service:local
+          ports: [{ name: http, containerPort: 8083 }]
+          envFrom: [{ configMapRef: { name: commerce-phase3-config } }]
+          env:
+            - { name: CATALOG_DATABASE_URL, valueFrom: { secretKeyRef: { name: catalog-service-secrets, key: database-url } } }
+            - { name: CATALOG_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: catalog-service-secrets, key: database-username } } }
+            - { name: CATALOG_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: catalog-service-secrets, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-identity-secrets, key: jwt-keys } } }
+            - { name: KAFKA_BOOTSTRAP_SERVERS, valueFrom: { secretKeyRef: { name: commerce-kafka-secrets, key: bootstrap-servers } } }
+            - { name: IDENTITY_TENANT_ID, valueFrom: { secretKeyRef: { name: commerce-tenant-secrets, key: tenant-id } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 8 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: 1500m, memory: 1Gi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: catalog-service }
+spec: { selector: { app: catalog-service }, ports: [{ name: http, port: 8083, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: catalog-service }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: catalog-service }, minReplicas: 3, maxReplicas: 20, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: catalog-service }
+spec: { minAvailable: 2, selector: { matchLabels: { app: catalog-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: pricing-service, labels: { app: pricing-service } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: pricing-service } }
+  template:
+    metadata: { labels: { app: pricing-service } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: pricing-service
+          image: commerce/pricing-service:local
+          ports: [{ name: http, containerPort: 8084 }]
+          envFrom: [{ configMapRef: { name: commerce-phase3-config } }]
+          env:
+            - { name: PRICING_DATABASE_URL, valueFrom: { secretKeyRef: { name: pricing-service-secrets, key: database-url } } }
+            - { name: PRICING_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: pricing-service-secrets, key: database-username } } }
+            - { name: PRICING_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: pricing-service-secrets, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-identity-secrets, key: jwt-keys } } }
+            - { name: KAFKA_BOOTSTRAP_SERVERS, valueFrom: { secretKeyRef: { name: commerce-kafka-secrets, key: bootstrap-servers } } }
+            - { name: IDENTITY_TENANT_ID, valueFrom: { secretKeyRef: { name: commerce-tenant-secrets, key: tenant-id } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 8 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 150m, memory: 384Mi }, limits: { cpu: 1000m, memory: 768Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: pricing-service }
+spec: { selector: { app: pricing-service }, ports: [{ name: http, port: 8084, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: pricing-service }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: pricing-service }, minReplicas: 2, maxReplicas: 15, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: pricing-service }
+spec: { minAvailable: 1, selector: { matchLabels: { app: pricing-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: media-service, labels: { app: media-service } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: media-service } }
+  template:
+    metadata: { labels: { app: media-service } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: media-service
+          image: commerce/media-service:local
+          ports: [{ name: http, containerPort: 8085 }]
+          envFrom: [{ configMapRef: { name: commerce-phase3-config } }]
+          env:
+            - { name: MEDIA_DATABASE_URL, valueFrom: { secretKeyRef: { name: media-service-secrets, key: database-url } } }
+            - { name: MEDIA_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: media-service-secrets, key: database-username } } }
+            - { name: MEDIA_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: media-service-secrets, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-identity-secrets, key: jwt-keys } } }
+            - { name: KAFKA_BOOTSTRAP_SERVERS, valueFrom: { secretKeyRef: { name: commerce-kafka-secrets, key: bootstrap-servers } } }
+            - { name: IDENTITY_TENANT_ID, valueFrom: { secretKeyRef: { name: commerce-tenant-secrets, key: tenant-id } } }
+            - { name: AWS_ACCESS_KEY_ID, valueFrom: { secretKeyRef: { name: media-storage-secrets, key: access-key-id } } }
+            - { name: AWS_SECRET_ACCESS_KEY, valueFrom: { secretKeyRef: { name: media-storage-secrets, key: secret-access-key } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 8 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: 2000m, memory: 2Gi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: media-service }
+spec: { selector: { app: media-service }, ports: [{ name: http, port: 8085, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: media-service }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: media-service }, minReplicas: 2, maxReplicas: 12, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: media-service }
+spec: { minAvailable: 1, selector: { matchLabels: { app: media-service } } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: search-service, labels: { app: search-service } }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: search-service } }
+  template:
+    metadata: { labels: { app: search-service } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: search-service
+          image: commerce/search-service:local
+          ports: [{ name: http, containerPort: 8086 }]
+          envFrom: [{ configMapRef: { name: commerce-phase3-config } }]
+          env:
+            - { name: SEARCH_DATABASE_URL, valueFrom: { secretKeyRef: { name: search-service-secrets, key: database-url } } }
+            - { name: SEARCH_DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: search-service-secrets, key: database-username } } }
+            - { name: SEARCH_DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: search-service-secrets, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-identity-secrets, key: jwt-keys } } }
+            - { name: KAFKA_BOOTSTRAP_SERVERS, valueFrom: { secretKeyRef: { name: commerce-kafka-secrets, key: bootstrap-servers } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 8 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 300m, memory: 768Mi }, limits: { cpu: 2000m, memory: 2Gi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: search-service }
+spec: { selector: { app: search-service }, ports: [{ name: http, port: 8086, targetPort: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: search-service }
+spec: { scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: search-service }, minReplicas: 3, maxReplicas: 20, metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: search-service }
+spec: { minAvailable: 2, selector: { matchLabels: { app: search-service } } }

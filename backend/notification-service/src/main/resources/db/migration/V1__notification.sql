@@ -1,0 +1,13 @@
+CREATE TABLE notification_inbox_events (event_id VARCHAR(120) PRIMARY KEY, event_type VARCHAR(120) NOT NULL, received_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE notification_templates (template_key VARCHAR(160) NOT NULL, locale VARCHAR(20) NOT NULL, subject_text TEXT NOT NULL, body_text TEXT NOT NULL, version INT NOT NULL DEFAULT 1, active BOOLEAN NOT NULL DEFAULT TRUE, PRIMARY KEY(template_key, locale));
+CREATE TABLE notification_preferences (user_id VARCHAR(120) PRIMARY KEY, email_enabled BOOLEAN NOT NULL DEFAULT TRUE, sms_enabled BOOLEAN NOT NULL DEFAULT TRUE, push_enabled BOOLEAN NOT NULL DEFAULT TRUE, in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE, quiet_start TIME, quiet_end TIME, timezone VARCHAR(80) NOT NULL DEFAULT 'Asia/Kolkata', locale VARCHAR(20) NOT NULL DEFAULT 'en-IN', updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE notification_devices (id VARCHAR(120) PRIMARY KEY, user_id VARCHAR(120) NOT NULL, platform VARCHAR(20) NOT NULL, token_hash VARCHAR(128) NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(user_id, token_hash));
+CREATE TABLE notification_deliveries (id VARCHAR(120) PRIMARY KEY, event_id VARCHAR(120) NOT NULL, user_id VARCHAR(120) NOT NULL, channel VARCHAR(20) NOT NULL, template_key VARCHAR(160) NOT NULL, locale VARCHAR(20) NOT NULL, subject_text TEXT NOT NULL, body_text TEXT NOT NULL, status VARCHAR(20) NOT NULL, attempts INT NOT NULL DEFAULT 0, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(), provider VARCHAR(40), provider_message_id VARCHAR(160), last_error TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(event_id,user_id,channel));
+CREATE INDEX notification_due_idx ON notification_deliveries(status,next_attempt_at);
+CREATE TABLE notification_dlq (id BIGSERIAL PRIMARY KEY, delivery_id VARCHAR(120), event_id VARCHAR(120), error_text TEXT NOT NULL, attempts INT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE in_app_notifications (id VARCHAR(120) PRIMARY KEY, user_id VARCHAR(120) NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, read_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+INSERT INTO notification_templates(template_key,locale,subject_text,body_text) VALUES
+ ('order.status','en-IN','Order update','Your order {{aggregateId}} is now {{status}}.'),
+ ('payment.status','en-IN','Payment update','Payment for order {{aggregateId}} is {{status}}.'),
+ ('shipment.status','en-IN','Shipping update','Shipment {{aggregateId}} is {{status}}.'),
+ ('refund.status','en-IN','Refund update','Refund {{aggregateId}} is {{status}}.') ON CONFLICT DO NOTHING;

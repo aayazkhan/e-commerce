@@ -1,0 +1,6 @@
+openapi: 3.0.3
+info: { title: Analytics Service API, version: 1.0.0 }
+paths:
+  /api/v1/analytics/summary: { get: { responses: { '200': { description: business metrics } } } }
+  /api/v1/admin/analytics/replay: { post: { responses: { '200': { description: replay accepted } } } }
+  /metrics: { get: { responses: { '200': { description: prometheus metrics } } } }

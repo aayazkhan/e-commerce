@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info: { title: Checkout Saga API, version: 1.0.0 }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+paths:
+  /api/v1/checkout/validate: { post: { security: [{ bearerAuth: [] }], summary: Server-validate cart, pricing, promotion, address, and shipping, responses: { '200': { description: Validation totals } } } }
+  /api/v1/checkout: { post: { security: [{ bearerAuth: [] }], summary: Start or resume persisted checkout Saga, parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }], responses: { '200': { description: Checkout state } } } }
+  /api/v1/checkout/{checkoutId}: { get: { security: [{ bearerAuth: [] }], summary: Read owned Saga state, responses: { '200': { description: Checkout state } } } }
+  /api/v1/checkout/{checkoutId}/retry: { post: { security: [{ bearerAuth: [] }], summary: Retry recoverable checkout, responses: { '200': { description: Checkout state } } } }
+  /health/ready: { get: { responses: { '200': { description: Ready }, '503': { description: Not ready } } } }

@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: phase6-service-config, namespace: commerce }
+data:
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  REDIS_URL: redis://redis:6379
+  DATABASE_USERNAME: commerce
+  NOTIFICATION_DEFAULT_CHANNELS: IN_APP,EMAIL,PUSH
+  NOTIFICATION_EMAIL_ENDPOINT: ""
+  NOTIFICATION_SMS_ENDPOINT: ""
+  NOTIFICATION_FCM_ENDPOINT: ""
+  NOTIFICATION_APNS_ENDPOINT: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: notification-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: notification-service } }
+  template:
+    metadata: { labels: { app: notification-service } }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: notification-service
+          image: commerce/notification-service:latest
+          ports: [{ name: http, containerPort: 8096 }]
+          envFrom: [{ configMapRef: { name: phase6-service-config } }]
+          env:
+            - { name: NOTIFICATION_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: notification-database-url } } }
+            - { name: DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+            - { name: NOTIFICATION_EMAIL_API_KEY, valueFrom: { secretKeyRef: { name: commerce-runtime, key: notification-email-api-key } } }
+            - { name: NOTIFICATION_SMS_API_KEY, valueFrom: { secretKeyRef: { name: commerce-runtime, key: notification-sms-api-key } } }
+            - { name: NOTIFICATION_FCM_API_KEY, valueFrom: { secretKeyRef: { name: commerce-runtime, key: notification-fcm-api-key } } }
+            - { name: NOTIFICATION_APNS_API_KEY, valueFrom: { secretKeyRef: { name: commerce-runtime, key: notification-apns-api-key } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 200m, memory: 384Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: notification-service, namespace: commerce }
+spec: { selector: { app: notification-service }, ports: [{ name: http, port: 8096, targetPort: http }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: review-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: review-service } }
+  template:
+    metadata: { labels: { app: review-service } }
+    spec:
+      containers:
+        - name: review-service
+          image: commerce/review-service:latest
+          ports: [{ name: http, containerPort: 8097 }]
+          envFrom: [{ configMapRef: { name: phase6-service-config } }]
+          env:
+            - { name: REVIEW_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: review-database-url } } }
+            - { name: DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 200m, memory: 384Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: review-service, namespace: commerce }
+spec: { selector: { app: review-service }, ports: [{ name: http, port: 8097, targetPort: http }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: recommendation-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: recommendation-service } }
+  template:
+    metadata: { labels: { app: recommendation-service } }
+    spec:
+      containers:
+        - name: recommendation-service
+          image: commerce/recommendation-service:latest
+          ports: [{ name: http, containerPort: 8098 }]
+          envFrom: [{ configMapRef: { name: phase6-service-config } }]
+          env:
+            - { name: RECOMMENDATION_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: recommendation-database-url } } }
+            - { name: DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 250m, memory: 384Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: recommendation-service, namespace: commerce }
+spec: { selector: { app: recommendation-service }, ports: [{ name: http, port: 8098, targetPort: http }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: analytics-service, namespace: commerce }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: analytics-service } }
+  template:
+    metadata: { labels: { app: analytics-service } }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: analytics-service
+          image: commerce/analytics-service:latest
+          ports: [{ name: http, containerPort: 8099 }]
+          envFrom: [{ configMapRef: { name: phase6-service-config } }]
+          env:
+            - { name: ANALYTICS_DATABASE_URL, valueFrom: { secretKeyRef: { name: commerce-runtime, key: analytics-database-url } } }
+            - { name: DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: commerce-runtime, key: database-password } } }
+            - { name: JWT_KEYS, valueFrom: { secretKeyRef: { name: commerce-runtime, key: jwt-keys } } }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, initialDelaySeconds: 15, periodSeconds: 15 }
+          resources: { requests: { cpu: 300m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: analytics-service, namespace: commerce }
+spec: { selector: { app: analytics-service }, ports: [{ name: http, port: 8099, targetPort: http }] }
