@@ -1,8 +1,10 @@
 package com.ecommerce.seller.app
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -39,11 +41,17 @@ private sealed interface ProductsState {
 }
 
 @Composable
-fun DashboardScreen(sellerApi: SellerApi) {
+fun DashboardScreen(
+    sellerApi: SellerApi,
+    refreshKey: Int,
+    onNewProduct: () -> Unit,
+    onEditProduct: (String) -> Unit,
+) {
     var profileState by remember { mutableStateOf<ProfileState>(ProfileState.Loading) }
     var productsState by remember { mutableStateOf<ProductsState>(ProductsState.Loading) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshKey) {
+        productsState = ProductsState.Loading
         profileState = when (val result = sellerApi.getProfile()) {
             is ApiResult.Success -> ProfileState.Loaded(result.value)
             is ApiResult.ApiError -> if (result.status == 404) ProfileState.NoProfile else ProfileState.Failed(result.body.message)
@@ -67,7 +75,10 @@ fun DashboardScreen(sellerApi: SellerApi) {
         }
 
         Divider()
-        Text("Products", style = MaterialTheme.typography.titleLarge)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Products", style = MaterialTheme.typography.titleLarge)
+            PrimaryButton("New product", onClick = onNewProduct)
+        }
 
         when (val state = productsState) {
             is ProductsState.Loading -> CircularProgressIndicator()
@@ -76,7 +87,7 @@ fun DashboardScreen(sellerApi: SellerApi) {
                 Text("No products yet.")
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.products) { product -> ProductRow(product) }
+                    items(state.products) { product -> ProductRow(product, onClick = { onEditProduct(product.id) }) }
                 }
             }
         }
@@ -93,8 +104,8 @@ private fun ProfileCard(profile: SellerProfile) {
 }
 
 @Composable
-private fun ProductRow(product: SellerProduct) {
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+private fun ProductRow(product: SellerProduct, onClick: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp)) {
         Column {
             Text(product.name, style = MaterialTheme.typography.bodyLarge)
             Text(product.status, style = MaterialTheme.typography.bodySmall)

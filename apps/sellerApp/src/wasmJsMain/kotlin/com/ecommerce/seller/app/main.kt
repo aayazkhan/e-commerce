@@ -18,13 +18,29 @@ fun main() {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 val dependencies = remember { AppDependencies() }
                 var screen by remember { mutableStateOf<Screen>(Screen.Login) }
+                var dashboardRefreshKey by remember { mutableStateOf(0) }
 
-                when (screen) {
+                when (val current = screen) {
                     is Screen.Login -> LoginScreen(dependencies.authApi) { accessToken ->
                         dependencies.session.set(accessToken)
                         screen = Screen.Dashboard
                     }
-                    is Screen.Dashboard -> DashboardScreen(dependencies.sellerApi)
+                    is Screen.Dashboard -> DashboardScreen(
+                        sellerApi = dependencies.sellerApi,
+                        refreshKey = dashboardRefreshKey,
+                        onNewProduct = { screen = Screen.ProductForm(productId = null) },
+                        onEditProduct = { productId -> screen = Screen.ProductForm(productId) },
+                    )
+                    is Screen.ProductForm -> ProductFormScreen(
+                        sellerApi = dependencies.sellerApi,
+                        categoryApi = dependencies.categoryApi,
+                        productId = current.productId,
+                        onSaved = {
+                            dashboardRefreshKey += 1
+                            screen = Screen.Dashboard
+                        },
+                        onCancel = { screen = Screen.Dashboard },
+                    )
                 }
             }
         }
