@@ -57,4 +57,5 @@ include(
     ":shared:core:common",
     ":shared:core:network",
     ":apps:sellerApp",
+    ":apps:adminApp",
 )
