@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class CartClientsTest {
     @Test
@@ -57,6 +59,45 @@ class CartClientsTest {
             failedInventory.stop(0)
             malformedInventory.stop(0)
         }
+    }
+
+    @Test
+    fun `pricing and inventory clients reject redirect-range status codes`() {
+        val redirectPricing = server { exchange -> exchange.respond(301, "redirect") }
+        val redirectInventory = server { exchange -> exchange.respond(302, "redirect") }
+        try {
+            assertFailsWith<ApiException> { PricingClient(url(redirectPricing)).current("p", "v", "INR") }
+            assertFailsWith<ApiException> { InventoryClient(url(redirectInventory)).available("v") }
+        } finally {
+            redirectPricing.stop(0)
+            redirectInventory.stop(0)
+        }
+    }
+
+    @Test
+    fun `price and inventory dtos implement value equality including optional sale price`() {
+        val withSale = PriceDto("INR", 2500, 1999, 7)
+        val sameWithSale = PriceDto("INR", 2500, 1999, 7)
+        val withoutSale = PriceDto("INR", 2500, null, 7)
+        val sameWithoutSale = PriceDto("INR", 2500, version = 7)
+
+        assertEquals(withSale, sameWithSale)
+        assertEquals(withSale.hashCode(), sameWithSale.hashCode())
+        assertEquals(withoutSale, sameWithoutSale)
+        assertNotEquals(withSale, withoutSale)
+        assertNotEquals(withSale, withSale.copy(currency = "USD"))
+        assertNotEquals(withSale, withSale.copy(baseMinor = 1))
+        assertNotEquals(withSale, withSale.copy(version = 8))
+        assertEquals("INR", withSale.copy().currency)
+        assertTrue(withSale.toString().contains("2500"))
+
+        val inventoryA = InventoryDto(5)
+        val inventoryB = InventoryDto(5)
+        val inventoryC = InventoryDto(6)
+        assertEquals(inventoryA, inventoryB)
+        assertEquals(inventoryA.hashCode(), inventoryB.hashCode())
+        assertNotEquals(inventoryA, inventoryC)
+        assertTrue(inventoryA.toString().contains("5"))
     }
 
     private fun url(server: HttpServer) = "http://localhost:${server.address.port}"

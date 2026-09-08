@@ -1,4 +1,5 @@
 package com.ecommerce.seller
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -73,7 +74,7 @@ fun Application.module() {
     monitor.subscribe(ApplicationStopping){worker?.close();publisher.close();scope.cancel();redis.close();db.close()}
     val verifier=HmacJwtAccessVerifier(c.required("seller.jwt.issuer"),c.required("seller.jwt.audience"),parseKeys(c.required("seller.jwt.keys")));val http=DownstreamHttpClient()
     install(DefaultHeaders);install(CallId){header(HttpHeaders.XRequestId);generate{"req_${java.util.UUID.randomUUID()}"}};install(CallLogging){level=Level.INFO;mdc("requestId"){it.callId}};install(ContentNegotiation){json(json)}
-    install(StatusPages){exception<ApiException>{call,e->call.respond(HttpStatusCode.fromValue(e.statusCode),ApiError(e.errorCode,e.message,call.callId.orEmpty(),e.fieldViolations,e.retryable))};exception<Throwable>{call,_->call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
+    install(StatusPages){exception<ApiException>{call,e->call.respond(HttpStatusCode.fromValue(e.statusCode),ApiError(e.errorCode,e.message,call.callId.orEmpty(),e.fieldViolations,e.retryable))};exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause);call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
     install(CORS){allowHost("localhost:3000");allowHost("localhost:8080");allowHeader(HttpHeaders.ContentType);allowHeader(HttpHeaders.Authorization);allowHeader(HttpHeaders.XRequestId);allowHeader("If-Match");allowCredentials=true}
     routing {
         get("/health/live"){call.respond(Health("UP","seller-service"))};get("/health/ready"){if(runCatching{db.ping()&&redis.ping()}.getOrDefault(false))call.respond(Health("UP","seller-service"))else call.respond(HttpStatusCode.ServiceUnavailable,Health("DOWN","seller-service"))};get("/metrics"){call.respondText("seller_requests_total 1\nseller_consumer_lag_observed ${worker?.lagObserved?.get()?:0}\nseller_idor_denials_total 0\n",ContentType.Text.Plain)}
@@ -102,7 +103,7 @@ fun Application.configureSellerRoutes(repository: SellerStore, proxyClient: Sell
     }
 }
 
-private class SellerRepositoryAdapter(private val delegate: SellerRepository) : SellerStore {
+internal class SellerRepositoryAdapter(private val delegate: SellerRepository) : SellerStore {
     override fun byUser(user: String) = delegate.byUser(user)
     override fun get(id: String) = delegate.get(id)
     override fun create(owner: String, request: SellerApplication, actor: String, correlation: String) = delegate.create(owner, request, actor, correlation)
@@ -113,10 +114,10 @@ private class SellerRepositoryAdapter(private val delegate: SellerRepository) : 
     override fun addLedger(seller: String, request: LedgerEntryRequest, actor: String) = delegate.addLedger(seller, request, actor)
 }
 
-private class SellerProxyAdapter(private val delegate: DownstreamHttpClient) : SellerProxy {
+internal class SellerProxyAdapter(private val delegate: DownstreamHttpClient) : SellerProxy {
     override fun request(baseUrl: String, method: String, path: String, bearer: String?, body: String?, requestId: String?, internalToken: String?, actorId: String?) = delegate.request(baseUrl, method, path, bearer, body, requestId, internalToken, actorId)
 }
 
-private fun ApplicationConfig.required(p:String)=property(p).getString()
-private fun parseKeys(v:String)=v.split(',').associate{it.substringBefore('=').trim() to it.substringAfter('=').trim()}.filterValues{it.isNotBlank()}
-@Serializable private data class Health(val status:String,val component:String)
+internal fun ApplicationConfig.required(p:String)=property(p).getString()
+internal fun parseKeys(v:String)=v.split(',').associate{it.substringBefore('=').trim() to it.substringAfter('=').trim()}.filterValues{it.isNotBlank()}
+@Serializable internal data class Health(val status:String,val component:String)

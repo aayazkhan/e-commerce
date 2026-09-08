@@ -61,19 +61,25 @@ Coverage by service is recorded in [test-matrix.md](test-matrix.md). The highest
 
 ## Critical-path and infrastructure status
 
+**Corrected 2026-09-08** — this table understated actual coverage in several rows; each correction
+below was verified by reading the named test file, not re-derived from the original claim. The
+pattern (real logic-level coverage existing where this report claimed none) recurred often enough
+across this correction pass that any future "NOT VERIFIED"/"no tests" claim in this repo's docs
+should be checked against the actual test files before being treated as true.
+
 | Area | Result |
 | --- | --- |
-| Identity registration/login/refresh full flow | NOT VERIFIED end to end |
-| Inventory 100-way reservation | Declared; NOT RUN without PostgreSQL/Testcontainers |
-| Order/payment idempotency | NOT VERIFIED at repository/provider boundary |
-| Checkout saga success and compensation | NOT VERIFIED |
-| Notification retry/DLQ/provider outage | Retry policy has unit assertions; delivery path NOT VERIFIED |
-| Verified-purchase reviews | NOT VERIFIED; review service has no tests |
-| Recommendation fallback | Partial unit assertion exists; dependency outage path NOT VERIFIED |
-| Analytics duplicate/replay/PII behavior | NOT VERIFIED |
-| Kafka/Redis/PostgreSQL/OpenSearch | NOT RUN as real integration dependencies |
-| External payment/shipping/push/email/SMS/OAuth/storage contracts | NOT RUN against provider sandboxes/stubs |
-| Migration upgrade/rollback testing | NOT RUN; only contract/filesystem inventory is available |
+| Identity registration/login/refresh full flow | Logic covered — `IdentityServiceTest.kt` (`login covers credentials failures account lifecycle and success`, `refresh and logout expose rotation failures and session operations`, plus register/OAuth/OTP cases). The real-HTTP/live-DB path still needs Docker to run `IdentityModuleBootIntegrationTest.kt`, not available in this workspace. |
+| Inventory 100-way reservation | Declared; NOT RUN without PostgreSQL/Testcontainers (`InventoryConcurrencyIntegrationTest.kt` exists and is structurally correct, just needs Docker). |
+| Order/payment idempotency | Logic covered — `PaymentRepositoryBehaviorTest.kt` (`create finalizes provider payment and returns the same idempotent result`) and `OrderRepositoryPersistenceTest.kt` (`create persists snapshots supports ownership and returns the idempotent result`, `create maps a duplicate database constraint to a conflict`). Live provider-boundary behavior still needs Docker + a provider sandbox. |
+| Checkout saga success and compensation | Covered thoroughly — `CheckoutSagaTest.kt` is an 18-case suite exercising the full saga (validate → reserve → order → payment → promotion → commit → shipment → complete) and every compensation path (order failure releases the reservation; shipment failure releases the reservation AND the promotion AND refunds the payment AND transitions the order to `REFUND_PENDING`; compensation-step failures themselves are contained; partial-state recovery). Only the live multi-service HTTP path (checkout actually calling 6 other running services) remains unverified, and that needs a deployed environment, not just Docker on one machine. |
+| Notification retry/DLQ/provider outage | Retry policy and DLQ-path logic covered — `NotificationRetryPolicyTest.kt`, `NotificationReliabilityTest.kt`. Live provider delivery path still NOT VERIFIED (needs a provider sandbox). |
+| Verified-purchase reviews | Logic covered — `ReviewRepositoryBehaviorTest.kt` (the "review service has no tests" claim was wrong; see [test-coverage-inventory.md](test-coverage-inventory.md) for the same correction elsewhere in this report set). |
+| Recommendation fallback | Covered — dedicated `RecommendationFallbackTest.kt`, not just a partial assertion. Dependency-outage behavior under real load still NOT VERIFIED live. |
+| Analytics duplicate/replay/PII behavior | Covered — `AnalyticsRepositoryBehaviorTest.kt` explicitly asserts duplicate-event dedup, PII (email) absence from stored payloads, and safe repeated replay. The one genuinely new gap (real-broker redelivery, not just calling the function twice) now has a written, structurally-verified integration test: `AnalyticsKafkaRedeliveryIntegrationTest.kt` — needs Docker to actually run. |
+| Kafka/Redis/PostgreSQL/OpenSearch | NOT RUN as real integration dependencies in this workspace (no Docker here) — the integration tests themselves now exist across most services (module-boot tests plus targeted ones like the Kafka redelivery test above) and are ready to run wherever Docker is available. |
+| External payment/shipping/push/email/SMS/OAuth/storage contracts | NOT RUN against provider sandboxes/stubs. |
+| Migration upgrade/rollback testing | NOT RUN; only contract/filesystem inventory is available. |
 
 ## Defects and risks
 

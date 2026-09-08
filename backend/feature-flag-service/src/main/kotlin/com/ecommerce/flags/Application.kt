@@ -1,4 +1,5 @@
 package com.ecommerce.flags
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -84,7 +85,7 @@ fun Application.module() {
     install(ContentNegotiation) { json(json) }
     install(StatusPages) {
         exception<ApiException> { call, e -> call.respond(HttpStatusCode.fromValue(e.statusCode), ApiError(e.errorCode, e.message, call.callId.orEmpty(), e.fieldViolations, e.retryable)) }
-        exception<Throwable> { call, _ -> call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty())) }
+        exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause); call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty())) }
     }
     install(CORS) { allowHost("localhost:3000"); allowHost("localhost:8080"); allowHeader(HttpHeaders.ContentType); allowHeader(HttpHeaders.Authorization); allowCredentials = true }
     routing {

@@ -1,4 +1,5 @@
 package com.ecommerce.promotion
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -84,7 +85,7 @@ fun Application.module() {
     install(ContentNegotiation) { json(Json { encodeDefaults = true; explicitNulls = false; ignoreUnknownKeys = true }) }
     install(StatusPages) {
         exception<ApiException> { call, cause -> call.respond(HttpStatusCode.fromValue(cause.statusCode), ApiError(cause.errorCode, cause.message, call.callId.orEmpty(), cause.fieldViolations, cause.retryable)) }
-        exception<Throwable> { call, _ -> call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty())) }
+        exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause); call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty())) }
     }
     install(CORS) { allowHost("localhost:3000"); allowHost("localhost:8080"); allowHeader(HttpHeaders.ContentType); allowHeader(HttpHeaders.Authorization); allowHeader(HttpHeaders.XRequestId); allowHeader("Idempotency-Key"); allowHeader("X-Internal-Service-Token"); allowHeader("X-Actor-Id"); allowCredentials = true }
     routing {
@@ -116,12 +117,12 @@ fun Application.configurePromotionRoutes(store: PromotionStore, cache: Promotion
     }
 }
 
-@Serializable private data class Health(val status: String, val component: String)
+@Serializable internal data class Health(val status: String, val component: String)
 @Serializable internal data class RedemptionRequest(val request: PromotionCalculateRequest, val orderId: String? = null)
 @Serializable internal data class InternalRedemptionRequest(val userId: String, val request: PromotionCalculateRequest, val orderId: String? = null)
-@Serializable private data class RemoveRedemptionRequest(val redemptionId: String)
-private fun ApplicationConfig.required(path: String): String = property(path).getString().takeIf { it.isNotBlank() } ?: error("Missing configuration: $path")
-private fun parseKeys(value: String): Map<String, String> = value.split(',').associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }.filterValues { it.isNotBlank() }
+@Serializable internal data class RemoveRedemptionRequest(val redemptionId: String)
+internal fun ApplicationConfig.required(path: String): String = property(path).getString().takeIf { it.isNotBlank() } ?: error("Missing configuration: $path")
+internal fun parseKeys(value: String): Map<String, String> = value.split(',').associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }.filterValues { it.isNotBlank() }
 private fun io.ktor.server.application.ApplicationCall.idempotency() = request.header("Idempotency-Key")?.takeIf { it.isNotBlank() } ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "Idempotency-Key is required.", 400)
 private fun io.ktor.server.application.ApplicationCall.requireAuth(verifier: HmacJwtAccessVerifier): VerifiedAccessToken = verifier.verify(request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ")?.trim() ?: throw ApiException(ErrorCode.AUTHENTICATION_REQUIRED, "Authentication is required.", 401))
 private fun io.ktor.server.application.ApplicationCall.requirePermission(verifier: HmacJwtAccessVerifier, permission: String): VerifiedAccessToken { val principal = requireAuth(verifier); if (!(principal.isPrivileged() || permission in principal.permissions)) throw ApiException(ErrorCode.FORBIDDEN, "You do not have permission for this operation.", 403); return principal }

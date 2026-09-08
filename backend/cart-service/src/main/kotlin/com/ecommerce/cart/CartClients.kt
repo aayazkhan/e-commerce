@@ -40,4 +40,4 @@ internal data class PriceDto(
 )
 
 @Serializable
-private data class InventoryDto(val available: Long)
+internal data class InventoryDto(val available: Long)

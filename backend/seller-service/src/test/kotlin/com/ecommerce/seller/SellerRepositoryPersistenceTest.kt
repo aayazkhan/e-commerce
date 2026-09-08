@@ -33,6 +33,8 @@ class SellerRepositoryPersistenceTest {
         assertEquals(SellerStatus.PENDING, created.status)
         assertEquals(created, repository.byUser("owner-1"))
         assertNull(repository.byUser("other"))
+        assertEquals(created, repository.get(created.id))
+        assertNull(repository.get("missing-seller"))
 
         val updated = repository.update("owner-1", SellerProfileUpdate("New Shop", "New Legal", "+915555", created.version))
         assertEquals("New Shop", updated.displayName)

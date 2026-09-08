@@ -5,6 +5,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class ModelsSerializationTest {
     private val json = Json { encodeDefaults = true }
@@ -80,5 +82,39 @@ class ModelsSerializationTest {
                 compactJson.decodeFromString(SeoMetadata.serializer(), compactJson.encodeToString(SeoMetadata.serializer(), variant)),
             )
         }
+    }
+
+    @Test
+    fun `data class equality is reflexive and detects field level differences`() {
+        val seo = SeoMetadata(title = "Home")
+        assertTrue(seo == seo)
+        assertNotEquals(seo, seo.copy(title = "Other"))
+        assertNotEquals(seo, SeoMetadata())
+
+        val request = CmsPageRequest("home", "Home", "{}", seo, 3)
+        assertTrue(request == request)
+        assertNotEquals(request, request.copy(slug = "other"))
+        assertNotEquals(request, request.copy(expectedVersion = null))
+        assertEquals(request.hashCode(), request.copy().hashCode())
+
+        val publish = CmsPublishRequest(1, "2026-08-21T10:00:00Z", "2026-08-22T10:00:00Z", "Asia/Kolkata")
+        assertTrue(publish == publish)
+        assertNotEquals(publish, publish.copy(version = 2))
+
+        val rollback = CmsRollbackRequest(1, 2)
+        assertTrue(rollback == rollback)
+        assertNotEquals(rollback, rollback.copy(version = 2))
+        assertNotEquals(rollback, rollback.copy(expectedVersion = 3))
+
+        val response = CmsPageResponse("page-1", "home", "Home", CmsStatus.DRAFT, 1, 1, "{}", seo, "admin-1", "2026-08-20T00:00:00Z", "2026-08-20T00:00:00Z")
+        assertTrue(response == response)
+        assertNotEquals(response, response.copy(status = CmsStatus.PUBLISHED))
+        assertNotEquals<Any?>(response, "not-a-response")
+    }
+
+    @Test
+    fun `cms page request tolerates an explicit null expected version`() {
+        val decoded = json.decodeFromString<CmsPageRequest>("{\"slug\":\"home\",\"title\":\"Home\",\"contentJson\":\"{}\",\"expectedVersion\":null}")
+        assertEquals(CmsPageRequest("home", "Home", "{}"), decoded)
     }
 }

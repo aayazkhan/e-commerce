@@ -1,13 +1,17 @@
 package com.ecommerce.gateway
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
 import com.ecommerce.platform.error.ErrorCode
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.plugins.callid.CallId
@@ -21,12 +25,15 @@ import io.ktor.server.request.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
 
-fun Application.module() {
+fun Application.module(httpClient: HttpClient = HttpClient(CIO)) {
+    monitor.subscribe(ApplicationStopped) { httpClient.close() }
+
     install(DefaultHeaders)
     install(CallId) {
         header(HttpHeaders.XRequestId)
@@ -58,7 +65,7 @@ fun Application.module() {
                 ),
             )
         }
-        exception<Throwable> { call, _ ->
+        exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause);
             call.respond(
                 HttpStatusCode.InternalServerError,
                 ApiError(
@@ -91,11 +98,16 @@ fun Application.module() {
                 contentType = io.ktor.http.ContentType.Text.Plain,
             )
         }
+        route("/{...}") {
+            handle {
+                proxyToService(call, httpClient)
+            }
+        }
     }
 }
 
 @Serializable
-private data class HealthResponse(
+internal data class HealthResponse(
     val status: String,
     val component: String,
 )

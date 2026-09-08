@@ -610,10 +610,18 @@ class IdentityRepository(private val dataSource: DataSource) : IdentityGateway, 
     }
 
     private fun getAccount(connection: Connection, userId: String, result: ResultSet? = null): UserAccount {
-        val row = result ?: connection.prepareStatement("SELECT id, email, phone, status, email_verified_at, phone_verified_at FROM users WHERE id = ?").use { statement ->
-            statement.setString(1, userId); statement.executeQuery().use { rs -> if (!rs.next()) throw ApiException(ErrorCode.NOT_FOUND, "User was not found.", 404) else rs }
+        // Build the return value while the ResultSet is still open -- returning a ResultSet out of
+        // its own `.use {}` block (the previous shape here) hands back an already-closed resource.
+        if (result != null) {
+            return UserAccount(result.getString("id"), result.getString("email"), result.getString("phone"), UserStatus.valueOf(result.getString("status")), result.instant("email_verified_at"), result.instant("phone_verified_at"), roles(connection, userId), permissions(connection, userId))
         }
-        return UserAccount(row.getString("id"), row.getString("email"), row.getString("phone"), UserStatus.valueOf(row.getString("status")), row.instant("email_verified_at"), row.instant("phone_verified_at"), roles(connection, userId), permissions(connection, userId))
+        return connection.prepareStatement("SELECT id, email, phone, status, email_verified_at, phone_verified_at FROM users WHERE id = ?").use { statement ->
+            statement.setString(1, userId)
+            statement.executeQuery().use { rs ->
+                if (!rs.next()) throw ApiException(ErrorCode.NOT_FOUND, "User was not found.", 404)
+                UserAccount(rs.getString("id"), rs.getString("email"), rs.getString("phone"), UserStatus.valueOf(rs.getString("status")), rs.instant("email_verified_at"), rs.instant("phone_verified_at"), roles(connection, userId), permissions(connection, userId))
+            }
+        }
     }
 
     private fun roles(connection: Connection, userId: String): Set<String> = connection.prepareStatement("SELECT role FROM user_roles WHERE user_id = ?").use { statement -> statement.setString(1, userId); statement.executeQuery().use { result -> buildSet { while (result.next()) add(result.getString(1)) } } }

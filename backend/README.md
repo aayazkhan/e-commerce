@@ -24,6 +24,14 @@ Phase 3 implementation notes:
 
 Redis/Kafka/OpenSearch/Testcontainers E2E validation, production deployment, provider sandboxes, backup/restore, and 200K-user load evidence require external environments and are not claimed by the default unit test run. Deployment/release contracts are documented in [../DEPLOYMENT.md](../DEPLOYMENT.md) and [../docs/production-readiness/phase9-go-live-report.md](../docs/production-readiness/phase9-go-live-report.md); no service should be represented by a fake repository or mock business response.
 
-Phase 10 adds JaCoCo aggregation, a hard 100% line/branch gate, separated integration/E2E Gradle lanes, and evidence documents under [../docs/phase10](../docs/phase10). The default `test` lane currently passes its 42 executed tests, while the coverage gate and infrastructure-dependent lanes remain intentionally incomplete as recorded in the [final report](../docs/phase10/final-test-report.md).
+Phase 10 adds JaCoCo aggregation, a hard 100% line gate with a narrow, documented branch-coverage
+tolerance mechanism for confirmed compiler-generated branches (see
+[coverage-exceptions.md](../docs/phase10/coverage-exceptions.md)), separated integration/E2E Gradle
+lanes, and evidence documents under [../docs/phase10](../docs/phase10). The default `test` lane
+currently passes all 671 executed tests (up from an earlier, stale count of 42 — see the corrected
+[test-coverage-inventory.md](../docs/phase10/test-coverage-inventory.md)); every module's branch gate
+passes, and the remaining line-coverage gap is exclusively `Application.module()` wiring, which has a
+written `@Tag("integration")` boot test per service but needs Docker (unavailable in every workspace
+this has been developed from so far) to actually run and close.
 
 Phase 4 adds the transaction-safe commerce core. See [PHASE4.md](PHASE4.md) for service contracts, deployment files, event boundaries, correctness guarantees, and environment-dependent validation status.

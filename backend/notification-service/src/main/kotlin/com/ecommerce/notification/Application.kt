@@ -1,4 +1,5 @@
 package com.ecommerce.notification
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -78,7 +79,7 @@ fun Application.module() {
     monitor.subscribe(ApplicationStopping){worker?.close();scope.cancel();db.close()}
     val verifier=HmacJwtAccessVerifier(c.required("notification.jwt.issuer"),c.required("notification.jwt.audience"),parseKeys(c.required("notification.jwt.keys")))
     install(DefaultHeaders);install(CallId){header(HttpHeaders.XRequestId);generate{"req_${java.util.UUID.randomUUID()}"}};install(CallLogging){level=Level.INFO;mdc("requestId"){it.callId}};install(ContentNegotiation){json(json)}
-    install(StatusPages){exception<ApiException>{call,e->call.respond(HttpStatusCode.fromValue(e.statusCode),ApiError(e.errorCode,e.message,call.callId.orEmpty(),e.fieldViolations,e.retryable))};exception<Throwable>{call,_->call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
+    install(StatusPages){exception<ApiException>{call,e->call.respond(HttpStatusCode.fromValue(e.statusCode),ApiError(e.errorCode,e.message,call.callId.orEmpty(),e.fieldViolations,e.retryable))};exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause);call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
     install(CORS){allowHost("localhost:3000");allowHost("localhost:8080");allowHeader(HttpHeaders.ContentType);allowHeader(HttpHeaders.Authorization);allowHeader(HttpHeaders.XRequestId);allowCredentials=true}
     routing {
         get("/health/live"){call.respond(Health("UP","notification-service"))};get("/health/ready"){if(runCatching{db.ping()}.getOrDefault(false))call.respond(Health("UP","notification-service"))else call.respond(HttpStatusCode.ServiceUnavailable,Health("DOWN","notification-service"))};get("/metrics"){call.respondText("# HELP notification_consumer_lag_observed Kafka records behind the consumer\nnotification_consumer_lag_observed ${worker?.lagObserved?.get()?:0}\nnotification_consumer_failures ${worker?.failuresObserved?.get()?:0}\n",ContentType.Text.Plain)}

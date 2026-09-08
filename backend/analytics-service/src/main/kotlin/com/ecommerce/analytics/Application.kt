@@ -1,4 +1,5 @@
 package com.ecommerce.analytics
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -50,7 +51,7 @@ fun Application.module() {
     monitor.subscribe(ApplicationStopping){worker?.close();scope.cancel();db.close()}
     val verifier=HmacJwtAccessVerifier(config.required("analytics.jwt.issuer"),config.required("analytics.jwt.audience"),parseKeys(config.required("analytics.jwt.keys")))
     install(DefaultHeaders); install(CallId){header(HttpHeaders.XRequestId);generate{"req_${java.util.UUID.randomUUID()}"}}; install(CallLogging){level=Level.INFO;mdc("requestId"){it.callId}}; install(ContentNegotiation){json(json)}
-    install(StatusPages){exception<ApiException>{call,error->call.respond(HttpStatusCode.fromValue(error.statusCode),ApiError(error.errorCode,error.message,call.callId.orEmpty(),error.fieldViolations,error.retryable))};exception<Throwable>{call,_->call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
+    install(StatusPages){exception<ApiException>{call,error->call.respond(HttpStatusCode.fromValue(error.statusCode),ApiError(error.errorCode,error.message,call.callId.orEmpty(),error.fieldViolations,error.retryable))};exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause);call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
     install(CORS){allowHost("localhost:3000");allowHost("localhost:8080");allowHeader(HttpHeaders.ContentType);allowHeader(HttpHeaders.Authorization);allowCredentials=true}
     routing {
         get("/health/live"){call.respond(Health("UP","analytics-service"))}
@@ -73,8 +74,8 @@ fun Application.configureAnalyticsRoutes(store: AnalyticsStore, verifier: HmacJw
     }
 }
 
-private fun ApplicationConfig.required(path:String)=property(path).getString()
-private fun parseKeys(value:String)=value.split(',').associate{it.substringBefore('=').trim() to it.substringAfter('=').trim()}.filterValues{it.isNotBlank()}
-private fun io.ktor.server.application.ApplicationCall.requirePermission(verifier:HmacJwtAccessVerifier,permission:String):VerifiedAccessToken { val token=request.headers[HttpHeaders.Authorization]?.removePrefix("Bearer ")?.trim()?:throw ApiException(ErrorCode.AUTHENTICATION_REQUIRED,"Authentication is required.",401);val principal=verifier.verify(token);if(!principal.isPrivileged()&&permission !in principal.permissions)throw ApiException(ErrorCode.FORBIDDEN,"Permission required.",403);return principal }
-private fun VerifiedAccessToken.isPrivileged()=roles.any{it in setOf("ADMIN","SUPER_ADMIN","SUPPORT")}
-@Serializable private data class Health(val status:String,val component:String)
+internal fun ApplicationConfig.required(path:String)=property(path).getString()
+internal fun parseKeys(value:String)=value.split(',').associate{it.substringBefore('=').trim() to it.substringAfter('=').trim()}.filterValues{it.isNotBlank()}
+internal fun io.ktor.server.application.ApplicationCall.requirePermission(verifier:HmacJwtAccessVerifier,permission:String):VerifiedAccessToken { val token=request.headers[HttpHeaders.Authorization]?.removePrefix("Bearer ")?.trim()?:throw ApiException(ErrorCode.AUTHENTICATION_REQUIRED,"Authentication is required.",401);val principal=verifier.verify(token);if(!principal.isPrivileged()&&permission !in principal.permissions)throw ApiException(ErrorCode.FORBIDDEN,"Permission required.",403);return principal }
+internal fun VerifiedAccessToken.isPrivileged()=roles.any{it in setOf("ADMIN","SUPER_ADMIN","SUPPORT")}
+@Serializable internal data class Health(val status:String,val component:String)

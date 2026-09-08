@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.ktor.server.default.headers)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.kafka)
     testImplementation(libs.testcontainers.junit)
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:${libs.versions.junit.get()}")

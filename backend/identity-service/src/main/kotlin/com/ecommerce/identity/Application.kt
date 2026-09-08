@@ -1,4 +1,5 @@
 package com.ecommerce.identity
+import io.ktor.server.application.log
 
 import com.ecommerce.identity.application.IdentityService
 import com.ecommerce.identity.config.IdentityConfig
@@ -90,7 +91,8 @@ fun Application.module() {
         exception<ApiException> { call, cause ->
             call.respond(HttpStatusCode.fromValue(cause.statusCode), ApiError(cause.errorCode, cause.message, call.callId.orEmpty(), cause.fieldViolations, cause.retryable))
         }
-        exception<Throwable> { call, _ ->
+        exception<Throwable> { call, cause ->
+            call.application.log.error("Unhandled exception", cause)
             call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty()))
         }
     }

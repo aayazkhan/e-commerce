@@ -1,4 +1,5 @@
 package com.ecommerce.payment
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -64,7 +65,7 @@ fun Application.module() {
     install(CallId){header(HttpHeaders.XRequestId);verify{it.length in 8..128};generate{"req_${java.util.UUID.randomUUID()}"}}
     install(CallLogging){level=Level.INFO;mdc("requestId"){it.callId};mdc("traceId"){it.request.headers["traceparent"].orEmpty()}}
     install(ContentNegotiation){json(json)}
-    install(StatusPages){exception<ApiException>{call,e->call.respond(HttpStatusCode.fromValue(e.statusCode),ApiError(e.errorCode,e.message,call.callId.orEmpty(),e.fieldViolations,e.retryable))};exception<Throwable>{call,_->call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
+    install(StatusPages){exception<ApiException>{call,e->call.respond(HttpStatusCode.fromValue(e.statusCode),ApiError(e.errorCode,e.message,call.callId.orEmpty(),e.fieldViolations,e.retryable))};exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause);call.respond(HttpStatusCode.InternalServerError,ApiError(ErrorCode.INTERNAL_ERROR,"An unexpected error occurred.",call.callId.orEmpty()))}}
     install(CORS){allowHost("localhost:3000");allowHost("localhost:8080");allowHeader(HttpHeaders.ContentType);allowHeader(HttpHeaders.Authorization);allowHeader("Idempotency-Key");allowHeader("X-Internal-Service-Token");allowHeader("X-Provider-Signature");allowCredentials=true}
     routing {
         get("/health/live"){call.respond(Health("UP","payment-service"))}

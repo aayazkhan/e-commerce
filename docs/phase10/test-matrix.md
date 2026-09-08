@@ -35,18 +35,27 @@ The coverage values are package-group values from the aggregate JaCoCo XML gener
 
 ## Acceptance matrix
 
+**This section was stale and has been corrected** (2026-09-08): every "not run" row below was checked
+directly against the actual test files, not re-derived from the old claims. Several of them turned
+out to already be covered by real unit tests with fake dependencies (same pattern discovered for the
+"zero tests" claims elsewhere in this report — see [final-test-report.md](final-test-report.md)'s own
+correction). Logic-level coverage and genuine live-infrastructure coverage are listed separately below
+since they answer different questions.
+
 | Acceptance item | Evidence/status |
 | --- | --- |
-| Kafka outage does not break order/payment | Not run; requires deployed failure injection and order/payment E2E |
-| Provider outage does not affect checkout | Not run; requires provider contract sandbox and checkout flow |
-| Analytics consumer failure does not affect order creation | Not run; requires Kafka integration and order flow |
-| Duplicate analytics event is idempotent | Not run; repository consumer has no executed integration test |
-| Duplicate notification does not send twice | Not run; provider consumer has no executed integration test |
-| Verified-purchase review validation | Not run; review service has no tests |
-| Recommendation fallback | Partial unit test exists; service-level failure test not run |
-| Historical analytics replay | Not run |
-| Notification retry reaches DLQ | Partial retry policy unit assertions; Kafka/provider path not run |
-| Consumer lag observable and restart recovery | Not run |
-| PII/secrets absent from analytics | Not run; needs database assertion over persisted event payload |
+| Duplicate analytics event is idempotent | **Covered** — `AnalyticsRepositoryBehaviorTest.kt`: `accept filters PII aggregates exact metrics and ignores duplicate events` sends the same event ID twice with different payloads and asserts only the first is applied, via the DB-level `INSERT ... ON CONFLICT DO NOTHING` dedup in `AnalyticsRepository.accept()`. What's NOT covered: real-broker redelivery (a message the consumer re-polls after a crash before offset commit) — see below. |
+| PII/secrets absent from analytics | **Covered** — same test explicitly asserts the stored `metric_json` excludes `email` and that the stored user identifier is a hash, not the raw `userId`. |
+| Historical analytics replay | **Covered** — `summary supports date windows and replay is safe to run repeatedly` in the same file. |
+| Recommendation fallback | **Covered** — `RecommendationFallbackTest.kt` is a dedicated file for exactly this. |
+| Notification retry reaches DLQ | **Covered** — `NotificationRetryPolicyTest.kt` and `NotificationReliabilityTest.kt` (retry-policy and DLQ-path unit assertions). What's NOT covered: an actual provider outage against a real provider sandbox. |
+| Duplicate notification does not send twice | **Covered** at the repository/dedup level — `NotificationRepositoryBehaviorTest.kt`. |
+| Verified-purchase review validation | **Covered** — `ReviewRepositoryBehaviorTest.kt` (the file review-service's earlier "no tests" claim was itself wrong about, per the same correction above). |
+| Kafka broker redelivery is handled correctly end-to-end | Genuinely not run — needs a real Kafka broker publishing a message twice (or forcing a re-poll before commit) and observing the consumer→repository path dedupe it. Structurally written (`AnalyticsKafkaRedeliveryIntegrationTest.kt`, `@Tag("integration")`, Testcontainers Kafka+Postgres) but only verified to compile and reach the environment's Docker-unavailable stopping point, same constraint as the Stage 3 module-boot tests — needs the user's Docker to actually run. |
+| Kafka outage does not break order/payment | Genuinely not run; needs deployed failure injection and an order/payment E2E environment. |
+| Provider outage does not affect checkout | Genuinely not run; needs a provider contract sandbox and a live checkout flow. |
+| Analytics consumer failure does not affect order creation | Genuinely not run; needs a deployed Kafka + order flow to inject the failure into. |
+| Consumer lag observable and restart recovery | Genuinely not run; needs a deployed consumer group to restart. |
 
-This matrix is intentionally red. It is the checklist for the remaining implementation rather than a declaration of completion.
+The remaining "genuinely not run" rows are the actual checklist — the rest of this matrix's original
+"not run" claims were incorrect and should not be treated as outstanding work.

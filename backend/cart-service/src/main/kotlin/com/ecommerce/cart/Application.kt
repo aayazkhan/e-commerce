@@ -1,4 +1,5 @@
 package com.ecommerce.cart
+import io.ktor.server.application.log
 
 import com.ecommerce.platform.error.ApiError
 import com.ecommerce.platform.error.ApiException
@@ -87,7 +88,7 @@ fun Application.module() {
     install(ContentNegotiation) { json(Json { encodeDefaults = true; explicitNulls = false; ignoreUnknownKeys = true }) }
     install(StatusPages) {
         exception<ApiException> { call, cause -> call.respond(HttpStatusCode.fromValue(cause.statusCode), ApiError(cause.errorCode, cause.message, call.callId.orEmpty(), cause.fieldViolations, cause.retryable)) }
-        exception<Throwable> { call, _ -> call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty())) }
+        exception<Throwable> { call, cause -> call.application.log.error("Unhandled exception", cause); call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.", call.callId.orEmpty())) }
     }
     install(CORS) { allowHost("localhost:3000"); allowHost("localhost:8080"); allowHeader(HttpHeaders.ContentType); allowHeader(HttpHeaders.Authorization); allowHeader(HttpHeaders.XRequestId); allowHeader("Idempotency-Key"); allowHeader("X-Guest-Token"); allowCredentials = true }
 
@@ -111,7 +112,7 @@ fun Application.configureCartRoutes(repository: CartStore, pricing: CartPricing,
     }
 }
 
-private class CartRepositoryAdapter(private val delegate: CartRepository) : CartStore {
+internal class CartRepositoryAdapter(private val delegate: CartRepository) : CartStore {
     override fun getOrCreate(actor: CartActor, currency: String) = delegate.getOrCreate(actor, currency)
     override fun add(actor: CartActor, productId: String, variantId: String, quantity: Int, price: PriceSnapshot, key: String, correlationId: String) = delegate.add(actor, productId, variantId, quantity, price, key, correlationId)
     override fun update(actor: CartActor, variantId: String, quantity: Int, price: PriceSnapshot?, key: String, correlationId: String) = delegate.update(actor, variantId, quantity, price, key, correlationId)
@@ -126,12 +127,12 @@ private class CartCacheAdapter(private val delegate: RedisCache) : CartCache {
     override fun delete(vararg keys: String) = delegate.delete(*keys)
 }
 
-@Serializable private data class Health(val status: String, val component: String)
+@Serializable internal data class Health(val status: String, val component: String)
 @Serializable data class AddItemRequest(val productId: String, val variantId: String, val quantity: Int)
 @Serializable data class UpdateItemRequest(val quantity: Int)
 @Serializable data class MergeRequest(val guestToken: String)
-private fun ApplicationConfig.required(path: String): String = property(path).getString().takeIf { it.isNotBlank() } ?: error("Missing configuration: $path")
-private fun parseKeys(value: String): Map<String, String> = value.split(',').associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }.filterValues { it.isNotBlank() }
+internal fun ApplicationConfig.required(path: String): String = property(path).getString().takeIf { it.isNotBlank() } ?: error("Missing configuration: $path")
+internal fun parseKeys(value: String): Map<String, String> = value.split(',').associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }.filterValues { it.isNotBlank() }
 private fun io.ktor.server.application.ApplicationCall.currency() = request.queryParameters["currency"]?.uppercase() ?: request.header("X-Currency")?.uppercase() ?: "INR"
 private fun io.ktor.server.application.ApplicationCall.idempotency() = request.header("Idempotency-Key")?.takeIf { it.isNotBlank() } ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "Idempotency-Key is required.", 400)
 private fun io.ktor.server.application.ApplicationCall.actor(verifier: HmacJwtAccessVerifier, allowCreateGuest: Boolean): CartActor {
