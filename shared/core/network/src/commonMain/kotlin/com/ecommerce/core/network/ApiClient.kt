@@ -26,11 +26,12 @@ class ApiClient(
     @PublishedApi internal val baseUrl: String,
     @PublishedApi internal val session: SessionHolder,
 ) {
-    suspend inline fun <reified T> get(path: String): ApiResult<T> {
+    suspend inline fun <reified T> get(path: String, headers: Map<String, String> = emptyMap()): ApiResult<T> {
         val response = try {
             http.request(baseUrl.trimEnd('/') + path) {
                 method = HttpMethod.Companion.Get
                 session.accessToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                headers.forEach { (name, value) -> header(name, value) }
             }
         } catch (t: Throwable) {
             return ApiResult.NetworkError(TransportFailure(t.message ?: "Request failed", t))
@@ -38,11 +39,12 @@ class ApiClient(
         return response.toApiResult()
     }
 
-    suspend inline fun <reified T, reified B> post(path: String, requestBody: B): ApiResult<T> {
+    suspend inline fun <reified T, reified B> post(path: String, requestBody: B, headers: Map<String, String> = emptyMap()): ApiResult<T> {
         val response = try {
             http.request(baseUrl.trimEnd('/') + path) {
                 method = HttpMethod.Companion.Post
                 session.accessToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                headers.forEach { (name, value) -> header(name, value) }
                 contentType(ContentType.Application.Json)
                 setBody(requestBody)
             }
@@ -52,11 +54,12 @@ class ApiClient(
         return response.toApiResult()
     }
 
-    suspend inline fun <reified T, reified B> patch(path: String, requestBody: B): ApiResult<T> {
+    suspend inline fun <reified T, reified B> patch(path: String, requestBody: B, headers: Map<String, String> = emptyMap()): ApiResult<T> {
         val response = try {
             http.request(baseUrl.trimEnd('/') + path) {
                 method = HttpMethod.Companion.Patch
                 session.accessToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                headers.forEach { (name, value) -> header(name, value) }
                 contentType(ContentType.Application.Json)
                 setBody(requestBody)
             }
@@ -66,11 +69,12 @@ class ApiClient(
         return response.toApiResult()
     }
 
-    suspend inline fun <reified T> delete(path: String): ApiResult<T> {
+    suspend inline fun <reified T> delete(path: String, headers: Map<String, String> = emptyMap()): ApiResult<T> {
         val response = try {
             http.request(baseUrl.trimEnd('/') + path) {
                 method = HttpMethod.Companion.Delete
                 session.accessToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                headers.forEach { (name, value) -> header(name, value) }
             }
         } catch (t: Throwable) {
             return ApiResult.NetworkError(TransportFailure(t.message ?: "Request failed", t))

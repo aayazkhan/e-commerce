@@ -8,6 +8,9 @@ import kotlinx.serialization.Serializable
 data class LoginRequest(val identifier: String, val password: String)
 
 @Serializable
+data class RegisterRequest(val email: String? = null, val phone: String? = null, val password: String, val firstName: String, val lastName: String)
+
+@Serializable
 data class AuthResponse(
     val accessToken: String,
     val refreshToken: String,
@@ -32,4 +35,7 @@ data class UserResponse(
 class AuthApi(private val client: ApiClient) {
     suspend fun login(identifier: String, password: String): ApiResult<AuthResponse> =
         client.post("/api/v1/auth/login", LoginRequest(identifier, password))
+
+    suspend fun register(email: String, password: String, firstName: String, lastName: String): ApiResult<UserResponse> =
+        client.post("/api/v1/auth/register", RegisterRequest(email = email, password = password, firstName = firstName, lastName = lastName))
 }

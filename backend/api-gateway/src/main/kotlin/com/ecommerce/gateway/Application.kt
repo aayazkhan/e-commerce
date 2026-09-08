@@ -80,6 +80,7 @@ fun Application.module(httpClient: HttpClient = HttpClient(CIO)) {
     install(CORS) {
         allowHost("localhost:3000")
         allowHost("localhost:3001")
+        allowHost("localhost:3002")
         allowHost("localhost:8080")
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
@@ -87,6 +88,7 @@ fun Application.module(httpClient: HttpClient = HttpClient(CIO)) {
         allowHeader(HttpHeaders.XRequestId)
         allowHeader("Idempotency-Key")
         allowHeader("If-Match")
+        allowHeader("X-Guest-Token")
         // Ktor's CORS plugin only allows GET/POST/HEAD by default -- every other proxied method
         // this gateway forwards (seller product edit/delete, admin updates, etc.) needs an
         // explicit allowMethod or the browser's preflight OPTIONS request is rejected with 403

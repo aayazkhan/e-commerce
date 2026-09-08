@@ -10,6 +10,12 @@ fun defaultJson(): Json = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
     isLenient = true
+    // Every backend service's own Json config sets this too (see e.g. checkout-service's
+    // Application.kt). Without it, a request field left at its DTO default is silently omitted
+    // from the JSON body -- and if the server's own default for that field differs (as
+    // CheckoutRequest.paymentProvider's does: "COD" here vs. "HTTP" server-side), the server
+    // applies its own default instead of the caller's intended value.
+    encodeDefaults = true
 }
 
 /**

@@ -58,4 +58,5 @@ include(
     ":shared:core:network",
     ":apps:sellerApp",
     ":apps:adminApp",
+    ":apps:storefrontApp",
 )
