@@ -112,6 +112,39 @@ class CatalogRoutesTest {
     }
 
     @Test
+    fun `privileged list queries always hit the repository, never the 20s cache`() = testApplication {
+        val store = FakeCatalogStore()
+        val cache = FakeCatalogCache()
+        // Seed a stale cached page under the key an anonymous request would use -- a privileged
+        // (admin) request must not receive this, or a just-published/just-deleted product would
+        // stay wrong in an admin's own moderation view for up to 20s instead of updating
+        // immediately.
+        cache.seed("catalog:list::::ACTIVE:24", "{\"items\":[],\"nextCursor\":null,\"hasMore\":false}")
+        application { installRoutes(store, cache) }
+
+        val response = client.get("/api/v1/products") { auth(token(roles = listOf("ADMIN"))) }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(1, store.listCalls)
+        assertTrue(response.bodyAsText().contains(sampleProduct.id), "must reflect the live repository result, not the stale cached page")
+    }
+
+    @Test
+    fun `an explicit status filter is only honored for a privileged caller, never anonymously`() = testApplication {
+        val store = FakeCatalogStore()
+        val cache = FakeCatalogCache()
+        application { installRoutes(store, cache) }
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products?status=DRAFT").status)
+        assertEquals(null, store.lastStatus, "anonymous caller must not be able to filter by status")
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products?status=DRAFT") { auth(token(roles = listOf("ADMIN"))) }.status)
+        assertEquals(ProductStatus.DRAFT, store.lastStatus)
+
+        assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/products?status=not-a-status") { auth(token(roles = listOf("ADMIN"))) }.status)
+    }
+
+    @Test
     fun `a single non-ACTIVE product is only visible to its owner or an admin`() = testApplication {
         val store = FakeCatalogStore()
         store.findResult = sampleProduct.copy(status = ProductStatus.DRAFT)
@@ -122,6 +155,33 @@ class CatalogRoutesTest {
         assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/products/prd-1") { auth(token(subject = "someone-else")) }.status)
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/products/prd-1") { auth(token(subject = "seller-1")) }.status)
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/products/prd-1") { auth(token(roles = listOf("ADMIN"))) }.status)
+    }
+
+    @Test
+    fun `an ADMIN-role caller bypasses the ownership check that would otherwise 403 them`() = testApplication {
+        val store = FakeCatalogStore()
+        val cache = FakeCatalogCache()
+        application { installRoutes(store, cache) }
+        // sampleProduct.sellerId is "seller-1" -- this admin is a different actor entirely, so
+        // without the privileged bypass, checkOwnership would reject every one of these with
+        // "You do not own this product." even though requirePermission already let them through
+        // specifically because they hold the ADMIN role.
+        val admin = token(roles = listOf("ADMIN"))
+
+        assertEquals(HttpStatusCode.OK, client.patch("/api/v1/products/prd-1") { auth(admin); contentType(ContentType.Application.Json); setBody(body()) }.status)
+        assertEquals(true, store.lastPrivileged)
+        assertEquals(HttpStatusCode.OK, client.post("/api/v1/products/prd-1/publish") { auth(admin) }.status)
+        assertEquals(true, store.lastPrivileged)
+        assertEquals(HttpStatusCode.OK, client.post("/api/v1/products/prd-1/unpublish") { auth(admin) }.status)
+        assertEquals(true, store.lastPrivileged)
+        assertEquals(HttpStatusCode.OK, client.delete("/api/v1/products/prd-1") { auth(admin) }.status)
+        assertEquals(true, store.lastPrivileged)
+
+        // A caller with the specific permission (not the ADMIN role) still goes through the
+        // ownership check as before -- only role-based privilege bypasses it.
+        val editor = token(permissions = listOf("PRODUCT_UPDATE"))
+        assertEquals(HttpStatusCode.OK, client.patch("/api/v1/products/prd-1") { auth(editor); contentType(ContentType.Application.Json); setBody(body()) }.status)
+        assertEquals(false, store.lastPrivileged)
     }
 
     @Test
@@ -328,13 +388,15 @@ class CatalogRoutesTest {
         var statusActor: String? = null
         var status = ProductStatus.DRAFT
         var findResult: Product? = sampleProduct
-        override fun list(cursor: String?, limit: Int, categoryId: String?, sellerId: String?, status: ProductStatus?, restrictToActive: Boolean): Pair<List<Product>, String?> { listCalls++; lastLimit = limit; lastCategoryId = categoryId; lastSellerId = sellerId; lastRestrictToActive = restrictToActive; return listOf(sampleProduct) to null }
+        var lastStatus: ProductStatus? = null
+        override fun list(cursor: String?, limit: Int, categoryId: String?, sellerId: String?, status: ProductStatus?, restrictToActive: Boolean): Pair<List<Product>, String?> { listCalls++; lastLimit = limit; lastCategoryId = categoryId; lastSellerId = sellerId; lastRestrictToActive = restrictToActive; lastStatus = status; return listOf(sampleProduct) to null }
         override fun find(id: String, publicOnly: Boolean): Product? = findResult?.takeIf { it.id == id }
         override fun findBySlug(slug: String): Product? = sampleProduct.takeIf { it.slug == slug }
         override fun create(input: ProductInput, actorId: String, correlationId: String): Product { createdBy = actorId; createdInput = input; return sampleProduct.copy(slug = input.slug, sellerId = input.sellerId) }
-        override fun update(id: String, input: ProductInput, actorId: String, correlationId: String): Product { updatedInput = input; return sampleProduct.copy(slug = input.slug, sellerId = input.sellerId) }
-        override fun changeStatus(id: String, status: ProductStatus, actorId: String, correlationId: String): Product { this.status = status; statusActor = actorId; return sampleProduct.copy(status = status) }
-        override fun delete(id: String, actorId: String, correlationId: String): Int = 1
+        var lastPrivileged: Boolean? = null
+        override fun update(id: String, input: ProductInput, actorId: String, correlationId: String, privileged: Boolean): Product { updatedInput = input; lastPrivileged = privileged; return sampleProduct.copy(slug = input.slug, sellerId = input.sellerId) }
+        override fun changeStatus(id: String, status: ProductStatus, actorId: String, correlationId: String, privileged: Boolean): Product { this.status = status; statusActor = actorId; lastPrivileged = privileged; return sampleProduct.copy(status = status) }
+        override fun delete(id: String, actorId: String, correlationId: String, privileged: Boolean): Int { lastPrivileged = privileged; return 1 }
     }
 
     private class FakeCatalogCache : CatalogCache {

@@ -95,6 +95,13 @@ class SellerRoutesTest {
         val admin = token("admin-1", roles = listOf("ADMIN"))
         assertEquals(HttpStatusCode.OK, client.post("/api/v1/admin/sellers/seller-1/status") { auth(admin); contentType(ContentType.Application.Json); setBody("{\"status\":\"ACTIVE\"}") }.status)
         assertEquals(HttpStatusCode.OK, client.post("/api/v1/admin/sellers/seller-1/ledger") { auth(admin); contentType(ContentType.Application.Json); setBody("{\"entryType\":\"SALE\",\"referenceId\":\"order-1\",\"amountMinor\":1000}") }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/api/v1/admin/sellers") { auth(user) }.status)
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/admin/sellers") { auth(admin) }.status)
+        assertEquals(1, store.listCalls)
+        assertEquals(null, store.lastListStatus)
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/admin/sellers?status=PENDING") { auth(admin) }.status)
+        assertEquals(SellerStatus.PENDING, store.lastListStatus)
+        assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/admin/sellers?status=not-a-status") { auth(admin) }.status)
         assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/sellers/missing").status)
     }
 
@@ -154,6 +161,9 @@ class SellerRoutesTest {
     private class FakeSellerStore : SellerStore {
         override fun byUser(user: String) = sample.takeIf { user == "user-1" }
         override fun get(id: String) = sample.takeIf { id == it.id }
+        var listCalls = 0
+        var lastListStatus: SellerStatus? = null
+        override fun list(status: SellerStatus?, limit: Int): List<SellerResponse> { listCalls++; lastListStatus = status; return listOf(sample) }
         override fun create(owner: String, request: SellerApplication, actor: String, correlation: String) = sample
         override fun update(user: String, request: SellerProfileUpdate) = sample.copy(displayName = request.displayName)
         override fun orders(seller: String, limit: Int) = listOf(sampleOrder)

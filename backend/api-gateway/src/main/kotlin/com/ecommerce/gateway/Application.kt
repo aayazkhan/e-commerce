@@ -79,6 +79,7 @@ fun Application.module(httpClient: HttpClient = HttpClient(CIO)) {
     }
     install(CORS) {
         allowHost("localhost:3000")
+        allowHost("localhost:3001")
         allowHost("localhost:8080")
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)

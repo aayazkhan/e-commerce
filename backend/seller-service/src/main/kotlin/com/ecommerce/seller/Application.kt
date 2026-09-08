@@ -52,6 +52,7 @@ import org.slf4j.event.Level
 interface SellerStore {
     fun byUser(user: String): SellerResponse?
     fun get(id: String): SellerResponse?
+    fun list(status: SellerStatus?, limit: Int): List<SellerResponse>
     fun create(owner: String, request: SellerApplication, actor: String, correlation: String): SellerResponse
     fun update(user: String, request: SellerProfileUpdate): SellerResponse
     fun orders(seller: String, limit: Int): List<SellerOrderItem>
@@ -101,6 +102,11 @@ fun Application.configureSellerRoutes(repository: SellerStore, proxyClient: Sell
         get("/api/v1/seller/inventory") { seller(call); val principal = call.requireAccess(verifier); val variant = call.request.queryParameters["variantId"] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "variantId is required.", 400); val product = call.request.queryParameters["productId"] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "productId is required.", 400); ownsProduct(call, product, principal.subject); forward(call, proxyClient.request(config.inventoryUrl, "GET", "/api/v1/inventory/items/$variant", token(call), requestId = call.callId.orEmpty())) }
         get("/api/v1/seller/promotions") { val current = seller(call); forward(call, proxyClient.request(config.promotionUrl, "GET", "/api/v1/internal/promotions?sellerId=${current.id}&limit=${call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 100) ?: 50}", internalToken = config.internalServiceToken, actorId = current.id, requestId = call.callId.orEmpty())) }; get("/api/v1/seller/analytics") { val current = seller(call); forward(call, proxyClient.request(config.analyticsUrl, "GET", "/api/v1/analytics/summary?sellerId=${current.id}", token(call), requestId = call.callId.orEmpty())) }
         get("/api/v1/seller/ledger") { call.respond(repository.ledger(seller(call).id)) }
+        get("/api/v1/admin/sellers") {
+            call.requirePermission(verifier, "ADMIN_SELLER_READ")
+            val status = call.request.queryParameters["status"]?.let { runCatching { SellerStatus.valueOf(it.uppercase()) }.getOrElse { throw ApiException(ErrorCode.VALIDATION_ERROR, "Invalid seller status.", 400) } }
+            call.respond(repository.list(status, call.request.queryParameters["limit"]?.toIntOrNull() ?: 50))
+        }
         post("/api/v1/admin/sellers/{sellerId}/status") {
             val principal = call.requirePermission(verifier, "ADMIN_SELLER_UPDATE")
             val request = call.receive<SellerStatusRequest>()
@@ -125,6 +131,7 @@ fun Application.configureSellerRoutes(repository: SellerStore, proxyClient: Sell
 internal class SellerRepositoryAdapter(private val delegate: SellerRepository) : SellerStore {
     override fun byUser(user: String) = delegate.byUser(user)
     override fun get(id: String) = delegate.get(id)
+    override fun list(status: SellerStatus?, limit: Int) = delegate.list(status, limit)
     override fun create(owner: String, request: SellerApplication, actor: String, correlation: String) = delegate.create(owner, request, actor, correlation)
     override fun update(user: String, request: SellerProfileUpdate) = delegate.update(user, request)
     override fun orders(seller: String, limit: Int) = delegate.orders(seller, limit)

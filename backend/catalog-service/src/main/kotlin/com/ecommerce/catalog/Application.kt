@@ -5,6 +5,7 @@ import com.ecommerce.platform.error.ApiException
 import com.ecommerce.platform.error.ErrorCode
 import com.ecommerce.platform.security.HmacJwtAccessVerifier
 import com.ecommerce.platform.security.VerifiedAccessToken
+import com.ecommerce.platform.security.isPrivileged
 import com.ecommerce.platform.service.KafkaOutboxPublisher
 import com.ecommerce.platform.service.RedisCache
 import com.ecommerce.platform.service.ServiceDatabase
@@ -39,9 +40,9 @@ interface CatalogStore {
     fun find(id: String, publicOnly: Boolean): Product?
     fun findBySlug(slug: String): Product?
     fun create(input: ProductInput, actorId: String, correlationId: String): Product
-    fun update(id: String, input: ProductInput, actorId: String, correlationId: String): Product
-    fun changeStatus(id: String, status: ProductStatus, actorId: String, correlationId: String): Product
-    fun delete(id: String, actorId: String, correlationId: String): Int
+    fun update(id: String, input: ProductInput, actorId: String, correlationId: String, privileged: Boolean = false): Product
+    fun changeStatus(id: String, status: ProductStatus, actorId: String, correlationId: String, privileged: Boolean = false): Product
+    fun delete(id: String, actorId: String, correlationId: String, privileged: Boolean = false): Int
 }
 
 interface CatalogCache {
@@ -80,9 +81,24 @@ fun Application.configureCatalogRoutes(repository: CatalogStore, redis: CatalogC
                 // any authenticated caller (not just the matching owner/admin) would leak other
                 // sellers' unpublished drafts to anyone holding a valid token.
                 val principal = call.callerOrNull(verifier)
-                val restrictToActive = !(principal != null && (principal.subject == sellerId || "ADMIN" in principal.roles || "SUPER_ADMIN" in principal.roles))
-                val key = "catalog:list:${cursor.orEmpty()}:${categoryId.orEmpty()}:${sellerId.orEmpty()}:${if (restrictToActive) "ACTIVE" else "ALL"}:$limit"
-                call.respond(cachedPage(redis, key) { val page = repository.list(cursor, limit, categoryId, sellerId, null, restrictToActive); ProductPage(page.first, page.second, page.second != null) })
+                val privileged = principal != null && (principal.subject == sellerId || "ADMIN" in principal.roles || "SUPER_ADMIN" in principal.roles)
+                val restrictToActive = !privileged
+                // Only a privileged caller (matching seller or admin) may filter by an explicit
+                // status -- otherwise this would let an anonymous caller see e.g. ?status=DRAFT
+                // products directly, bypassing the ACTIVE-only default above entirely.
+                val status = if (privileged) call.request.queryParameters["status"]?.let { runCatching { ProductStatus.valueOf(it.uppercase()) }.getOrElse { throw ApiException(ErrorCode.VALIDATION_ERROR, "Invalid product status.", 400) } } else null
+                fun load() = repository.list(cursor, limit, categoryId, sellerId, status, restrictToActive).let { ProductPage(it.first, it.second, it.second != null) }
+                if (privileged) {
+                    // Privileged views (a seller's own catalog, or admin moderation) are low
+                    // traffic and need to reflect a just-made change immediately -- e.g. an admin
+                    // publishing a product and expecting it to disappear from their own moderation
+                    // queue right away, not up to 20s later. Public ACTIVE-only browsing (the
+                    // traffic this cache actually exists for) keeps the cached path.
+                    call.respond(load())
+                } else {
+                    val key = "catalog:list:${cursor.orEmpty()}:${categoryId.orEmpty()}:${sellerId.orEmpty()}:ACTIVE:$limit"
+                    call.respond(cachedPage(redis, key) { load() })
+                }
             }
             get("/slug/{slug}") { val slug = call.parameters.requireValue("slug"); call.respond(cachedProduct(redis, "catalog:slug:$slug") { repository.findBySlug(slug) } ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404)) }
             get("/{productId}") {
@@ -99,12 +115,12 @@ fun Application.configureCatalogRoutes(repository: CatalogStore, redis: CatalogC
                 call.respond(product)
             }
             post { val principal = call.requirePermission(verifier, "PRODUCT_CREATE"); val request = call.receive<ProductRequest>(); val sellerId = if (request.ownerType.uppercase() == "SELLER") principal.subject else request.sellerId ?: principal.subject; val input = request.input(sellerId); val product = repository.create(input, principal.subject, call.callId.orEmpty()); redis.delete("catalog:slug:${input.slug}"); call.respond(HttpStatusCode.Created, product) }
-            patch("/{productId}") { val principal = call.requirePermission(verifier, "PRODUCT_UPDATE"); val request = call.receive<ProductRequest>(); val existing = repository.find(call.parameters.requireValue("productId"), false) ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404); val sellerId = if (request.ownerType.uppercase() == "SELLER") principal.subject else request.sellerId ?: existing.sellerId; val product = repository.update(existing.id, request.input(sellerId), principal.subject, call.callId.orEmpty()); redis.delete("catalog:product:${existing.id}", "catalog:slug:${existing.slug}", "catalog:slug:${product.slug}"); call.respond(product) }
-            delete("/{productId}") { val principal = call.requirePermission(verifier, "PRODUCT_DELETE"); val id = call.parameters.requireValue("productId"); val existing = repository.find(id, false); repository.delete(id, principal.subject, call.callId.orEmpty()); redis.delete("catalog:product:$id", "catalog:slug:${existing?.slug}"); call.respond(Message("Product archived.")) }
-            post("/{productId}/publish") { val principal = call.requirePermission(verifier, "PRODUCT_PUBLISH"); val id = call.parameters.requireValue("productId"); val product = repository.changeStatus(id, ProductStatus.ACTIVE, principal.subject, call.callId.orEmpty()); redis.delete("catalog:product:$id", "catalog:slug:${product.slug}"); call.respond(product) }
-            post("/{productId}/unpublish") { val principal = call.requirePermission(verifier, "PRODUCT_UPDATE"); val id = call.parameters.requireValue("productId"); val product = repository.changeStatus(id, ProductStatus.INACTIVE, principal.subject, call.callId.orEmpty()); redis.delete("catalog:product:$id", "catalog:slug:${product.slug}"); call.respond(product) }
+            patch("/{productId}") { val principal = call.requirePermission(verifier, "PRODUCT_UPDATE"); val request = call.receive<ProductRequest>(); val existing = repository.find(call.parameters.requireValue("productId"), false) ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404); val sellerId = if (request.ownerType.uppercase() == "SELLER") principal.subject else request.sellerId ?: existing.sellerId; val product = repository.update(existing.id, request.input(sellerId), principal.subject, call.callId.orEmpty(), principal.isPrivileged()); redis.delete("catalog:product:${existing.id}", "catalog:slug:${existing.slug}", "catalog:slug:${product.slug}"); call.respond(product) }
+            delete("/{productId}") { val principal = call.requirePermission(verifier, "PRODUCT_DELETE"); val id = call.parameters.requireValue("productId"); val existing = repository.find(id, false); repository.delete(id, principal.subject, call.callId.orEmpty(), principal.isPrivileged()); redis.delete("catalog:product:$id", "catalog:slug:${existing?.slug}"); call.respond(Message("Product archived.")) }
+            post("/{productId}/publish") { val principal = call.requirePermission(verifier, "PRODUCT_PUBLISH"); val id = call.parameters.requireValue("productId"); val product = repository.changeStatus(id, ProductStatus.ACTIVE, principal.subject, call.callId.orEmpty(), principal.isPrivileged()); redis.delete("catalog:product:$id", "catalog:slug:${product.slug}"); call.respond(product) }
+            post("/{productId}/unpublish") { val principal = call.requirePermission(verifier, "PRODUCT_UPDATE"); val id = call.parameters.requireValue("productId"); val product = repository.changeStatus(id, ProductStatus.INACTIVE, principal.subject, call.callId.orEmpty(), principal.isPrivileged()); redis.delete("catalog:product:$id", "catalog:slug:${product.slug}"); call.respond(product) }
         }
-        post("/api/v1/internal/products/{productId}/publish") { call.requireInternal(internalToken); val product = repository.changeStatus(call.parameters.requireValue("productId"), ProductStatus.ACTIVE, call.request.headers["X-Actor-Id"] ?: "admin-service", call.callId.orEmpty()); redis.delete("catalog:product:${product.id}", "catalog:slug:${product.slug}"); call.respond(product) }
+        post("/api/v1/internal/products/{productId}/publish") { call.requireInternal(internalToken); val product = repository.changeStatus(call.parameters.requireValue("productId"), ProductStatus.ACTIVE, call.request.headers["X-Actor-Id"] ?: "admin-service", call.callId.orEmpty(), privileged = true); redis.delete("catalog:product:${product.id}", "catalog:slug:${product.slug}"); call.respond(product) }
     }
 }
 
