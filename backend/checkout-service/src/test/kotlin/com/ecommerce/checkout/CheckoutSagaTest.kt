@@ -49,7 +49,7 @@ class CheckoutSagaTest {
             ),
             store.checkpoints.map { it.second },
         )
-        assertEquals(listOf("PAID", "CONFIRMED"), dependencies.orderTransitions)
+        assertEquals(listOf("PAYMENT_PENDING", "PAYMENT_PROCESSING", "PAID", "CONFIRMED"), dependencies.orderTransitions)
         assertEquals(listOf("reservation-1"), dependencies.committedReservations)
         assertEquals(listOf("redemption-1"), dependencies.committedPromotions)
         assertEquals(listOf("shipment-1"), dependencies.createdShipments)
