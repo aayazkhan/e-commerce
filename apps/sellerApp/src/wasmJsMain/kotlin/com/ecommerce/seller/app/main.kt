@@ -30,6 +30,7 @@ fun main() {
                         refreshKey = dashboardRefreshKey,
                         onNewProduct = { screen = Screen.ProductForm(productId = null) },
                         onEditProduct = { productId -> screen = Screen.ProductForm(productId) },
+                        onViewOrders = { screen = Screen.Orders },
                     )
                     is Screen.ProductForm -> ProductFormScreen(
                         sellerApi = dependencies.sellerApi,
@@ -40,6 +41,10 @@ fun main() {
                             screen = Screen.Dashboard
                         },
                         onCancel = { screen = Screen.Dashboard },
+                    )
+                    is Screen.Orders -> OrdersScreen(
+                        sellerApi = dependencies.sellerApi,
+                        onBack = { screen = Screen.Dashboard },
                     )
                 }
             }

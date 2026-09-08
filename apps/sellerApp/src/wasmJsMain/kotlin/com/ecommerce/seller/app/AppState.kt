@@ -23,6 +23,7 @@ class AppDependencies {
 sealed interface Screen {
     data object Login : Screen
     data object Dashboard : Screen
+    data object Orders : Screen
 
     /** productId == null means "create new"; non-null means "edit this product". */
     data class ProductForm(val productId: String? = null) : Screen

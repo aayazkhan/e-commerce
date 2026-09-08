@@ -14,6 +14,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +47,7 @@ fun DashboardScreen(
     refreshKey: Int,
     onNewProduct: () -> Unit,
     onEditProduct: (String) -> Unit,
+    onViewOrders: () -> Unit,
 ) {
     var profileState by remember { mutableStateOf<ProfileState>(ProfileState.Loading) }
     var productsState by remember { mutableStateOf<ProductsState>(ProductsState.Loading) }
@@ -73,6 +75,8 @@ fun DashboardScreen(
             is ProfileState.NoProfile -> Text("You don't have a seller profile yet.")
             is ProfileState.Failed -> Text(state.message, color = MaterialTheme.colorScheme.error)
         }
+
+        TextButton(onClick = onViewOrders) { Text("View orders") }
 
         Divider()
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

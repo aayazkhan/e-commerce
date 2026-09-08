@@ -73,6 +73,19 @@ data class SellerProductRequest(
 @Serializable
 data class SellerMessage(val message: String)
 
+/** Mirrors backend/seller-service/.../Models.kt's SellerOrderItem exactly -- one order line item. */
+@Serializable
+data class SellerOrderItem(
+    val orderId: String,
+    val productId: String,
+    val variantId: String,
+    val quantity: Int,
+    val lineTotalMinor: Long,
+    val currency: String,
+    val status: String? = null,
+    val occurredAt: String,
+)
+
 class SellerApi(private val client: ApiClient) {
     suspend fun getProfile(): ApiResult<SellerProfile> = client.get("/api/v1/seller/profile")
 
@@ -87,4 +100,6 @@ class SellerApi(private val client: ApiClient) {
         client.patch("/api/v1/seller/products/$id", request)
 
     suspend fun deleteProduct(id: String): ApiResult<SellerMessage> = client.delete("/api/v1/seller/products/$id")
+
+    suspend fun listOrders(): ApiResult<List<SellerOrderItem>> = client.get("/api/v1/seller/orders")
 }
