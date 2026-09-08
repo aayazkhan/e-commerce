@@ -1,8 +1,13 @@
 package com.ecommerce.catalog
 
 import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Tag
@@ -14,6 +19,10 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -57,5 +66,31 @@ class CatalogModuleBootIntegrationTest {
         val ready = client.get("/health/ready")
         assertEquals(HttpStatusCode.OK, ready.status)
         assertTrue(ready.bodyAsText().contains("UP"))
+
+        // Exercises the real INSERT INTO products statement against a live database -- every
+        // other test in this module mocks CatalogStore, so a hand-written SQL/placeholder
+        // mismatch here (e.g. one too many "?" in the VALUES clause) previously went
+        // completely undetected until an actual seller tried to create a product.
+        val created = client.post("/api/v1/products") {
+            header("Authorization", "Bearer ${adminToken()}")
+            contentType(ContentType.Application.Json)
+            setBody(
+                """{"categoryId":"cat-1","name":"Wireless Mouse","slug":"wireless-mouse","description":"A wireless mouse."}""",
+            )
+        }
+        assertEquals(HttpStatusCode.Created, created.status)
+        assertTrue(created.bodyAsText().contains("Wireless Mouse"))
+    }
+
+    private fun adminToken(): String {
+        val encoder = Base64.getUrlEncoder().withoutPadding()
+        val header = encoder.encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"kid-1\"}".toByteArray(StandardCharsets.UTF_8))
+        val claims = encoder.encodeToString(
+            "{\"subject\":\"user-1\",\"roles\":[\"ADMIN\"],\"permissions\":[],\"tokenId\":\"token-1\",\"issuedAt\":1700000000,\"expiresAt\":2000000000,\"issuer\":\"issuer\",\"audience\":\"audience\"}".toByteArray(StandardCharsets.UTF_8),
+        )
+        val input = "$header.$claims"
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec("secret".toByteArray(StandardCharsets.UTF_8), "HmacSHA256"))
+        return "$input.${encoder.encodeToString(mac.doFinal(input.toByteArray(StandardCharsets.UTF_8)))}"
     }
 }

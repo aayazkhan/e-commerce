@@ -353,6 +353,7 @@ class IdentityServiceTest {
         override fun deleteAddress(userId: String, addressId: String, now: Instant): Int = 1
         override fun setDefaultAddress(userId: String, addressId: String, now: Instant) = address
         override fun deactivate(userId: String, now: Instant): Int { deactivateCalls++; return 1 }
+        override fun grantRole(userId: String, role: String, now: Instant) = accountResult!!
     }
 
     private companion object {

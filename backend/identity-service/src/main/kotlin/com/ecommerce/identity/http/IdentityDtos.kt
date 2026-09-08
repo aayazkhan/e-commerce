@@ -57,6 +57,9 @@ data class MessageResponse(val message: String)
 data class AdminUserStatusRequest(val status: String)
 
 @Serializable
+data class GrantRoleRequest(val role: String)
+
+@Serializable
 data class ChallengeResponse(val challengeId: String)
 
 @Serializable

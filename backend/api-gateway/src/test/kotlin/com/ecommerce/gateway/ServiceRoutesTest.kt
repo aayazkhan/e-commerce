@@ -32,4 +32,11 @@ class ServiceRoutesTest {
 
         assertEquals("cart-service", route?.baseUrl?.let { java.net.URI(it).host })
     }
+
+    @Test
+    fun `admin seller approval routes to seller-service, not the admin-service catch-all`() {
+        val route = resolveServiceRoute("/api/v1/admin/sellers/seller-1/status")
+
+        assertEquals("seller-service", route?.baseUrl?.let { java.net.URI(it).host })
+    }
 }

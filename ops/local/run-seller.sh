@@ -11,6 +11,7 @@ export CATALOG_URL="http://localhost:8083"
 export INVENTORY_URL="http://localhost:1"
 export PROMOTION_URL="http://localhost:1"
 export ANALYTICS_URL="http://localhost:1"
+export IDENTITY_URL="http://localhost:8081"
 export INTERNAL_SERVICE_TOKEN="dev-internal-token"
 export SELLER_PORT="8100"
 cd /Users/ayyazkhan/e-commerce

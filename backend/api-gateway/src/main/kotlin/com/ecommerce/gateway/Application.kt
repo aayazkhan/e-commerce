@@ -7,6 +7,7 @@ import com.ecommerce.platform.error.ErrorCode
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -81,8 +82,17 @@ fun Application.module(httpClient: HttpClient = HttpClient(CIO)) {
         allowHost("localhost:8080")
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.Accept)
         allowHeader(HttpHeaders.XRequestId)
         allowHeader("Idempotency-Key")
+        allowHeader("If-Match")
+        // Ktor's CORS plugin only allows GET/POST/HEAD by default -- every other proxied method
+        // this gateway forwards (seller product edit/delete, admin updates, etc.) needs an
+        // explicit allowMethod or the browser's preflight OPTIONS request is rejected with 403
+        // before the real request is ever sent, regardless of what the downstream service allows.
+        allowMethod(HttpMethod.Patch)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
         allowCredentials = true
     }
     routing {

@@ -114,7 +114,7 @@ fun Application.module() {
         get("/metrics") {
             call.respondText("# HELP identity_service_up Identity service process health\n# TYPE identity_service_up gauge\nidentity_service_up 1\n${metrics.prometheus()}", ContentType.Text.Plain)
         }
-        identityRoutes(identityService, jwtService)
+        identityRoutes(identityService, jwtService, identityConfig.internalServiceToken)
     }
 }
 

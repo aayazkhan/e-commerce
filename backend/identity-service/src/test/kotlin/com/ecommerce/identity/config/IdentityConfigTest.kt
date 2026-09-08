@@ -85,6 +85,7 @@ class IdentityConfigTest {
             "identity.jwt.keys" to "v1=secret",
             "identity.kafka.bootstrapServers" to "localhost:9092",
             "identity.kafka.tenantId" to "tenant-1",
+            "identity.internalServiceToken" to "internal-token",
         )
         values.putAll(overrides)
         remove?.let(values::remove)

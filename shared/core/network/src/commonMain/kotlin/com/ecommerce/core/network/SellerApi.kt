@@ -39,8 +39,52 @@ data class SellerProduct(
     val updatedAt: String,
 )
 
+/** Full product shape returned by GET/POST/PATCH -- mirrors catalog-service's Product response. */
+@Serializable
+data class SellerProductDetail(
+    val id: String,
+    val sellerId: String,
+    val categoryId: String,
+    val name: String,
+    val slug: String,
+    val description: String,
+    val shortDescription: String? = null,
+    val status: String,
+    val version: Long,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+/**
+ * Request body for create (POST) and update (PATCH) -- mirrors catalog-service's ProductRequest.
+ * ownerType/sellerId are overwritten server-side by seller-service, so they're omitted here.
+ * variants/media default to empty on the server and aren't collected by this form yet.
+ */
+@Serializable
+data class SellerProductRequest(
+    val categoryId: String,
+    val name: String,
+    val slug: String,
+    val description: String,
+    val shortDescription: String? = null,
+    val status: String = "DRAFT",
+)
+
+@Serializable
+data class SellerMessage(val message: String)
+
 class SellerApi(private val client: ApiClient) {
     suspend fun getProfile(): ApiResult<SellerProfile> = client.get("/api/v1/seller/profile")
 
     suspend fun listProducts(): ApiResult<SellerProductPage> = client.get("/api/v1/seller/products")
+
+    suspend fun getProduct(id: String): ApiResult<SellerProductDetail> = client.get("/api/v1/seller/products/$id")
+
+    suspend fun createProduct(request: SellerProductRequest): ApiResult<SellerProductDetail> =
+        client.post("/api/v1/seller/products", request)
+
+    suspend fun updateProduct(id: String, request: SellerProductRequest): ApiResult<SellerProductDetail> =
+        client.patch("/api/v1/seller/products/$id", request)
+
+    suspend fun deleteProduct(id: String): ApiResult<SellerMessage> = client.delete("/api/v1/seller/products/$id")
 }

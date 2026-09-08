@@ -5,6 +5,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.options
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -32,6 +33,26 @@ class ApplicationTest {
     }
 
     @Test
+    fun `CORS preflight allows the mutating methods this gateway actually proxies`() = testApplication {
+        application { module() }
+
+        // Ktor's CORS plugin only allows GET/POST/HEAD unless every other method is explicitly
+        // registered -- a real browser preflight for editing/deleting a seller product (or any
+        // other PATCH/DELETE route this gateway forwards) was silently rejected with 403 before
+        // the actual request was ever sent, even though the downstream service allowed it fine.
+        // No prior test ever issued a real OPTIONS preflight, so this went undetected.
+        for (method in listOf("PATCH", "PUT", "DELETE")) {
+            val preflight = client.options("/api/v1/seller/products/prd-1") {
+                header(HttpHeaders.Origin, "http://localhost:3000")
+                header("Access-Control-Request-Method", method)
+                header("Access-Control-Request-Headers", "authorization,content-type")
+            }
+            assertEquals(HttpStatusCode.OK, preflight.status, "preflight for $method")
+            assertTrue(preflight.headers["Access-Control-Allow-Methods"]?.contains(method) == true, "Allow-Methods missing $method")
+        }
+    }
+
+    @Test
     fun `proxies a public resource path to its owning service and passes through the body`() = testApplication {
         var capturedUrl: String? = null
         var capturedAuth: String? = null
@@ -54,6 +75,33 @@ class ApplicationTest {
         assertEquals("""{"id":"cart-1"}""", response.bodyAsText())
         assertEquals("http://cart-service:8088/api/v1/cart", capturedUrl)
         assertEquals("Bearer test-token", capturedAuth)
+    }
+
+    @Test
+    fun `does not forward the browser's Origin header to the downstream service`() = testApplication {
+        var capturedOrigin: String? = null
+        val mockEngine = MockEngine { request ->
+            capturedOrigin = request.headers[HttpHeaders.Origin]
+            respond(
+                content = """{"id":"cart-1"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }
+        application { module(HttpClient(mockEngine)) }
+
+        // CORS is a browser<->gateway contract, already enforced by the gateway's own CORS
+        // plugin before this request reaches ProxyHandler. Forwarding Origin downstream makes
+        // every proxied service's OWN CORS plugin (installed for direct-access scenarios) also
+        // gate the request against its own, narrower method allowlist -- this silently 403'd
+        // every PATCH/DELETE call the gateway proxied, even with the gateway's CORS config fixed.
+        val response = client.get("/api/v1/cart") {
+            header(HttpHeaders.Origin, "http://localhost:3000")
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(null, capturedOrigin)
     }
 
     @Test

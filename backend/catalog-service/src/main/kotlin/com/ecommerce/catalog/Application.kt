@@ -35,7 +35,7 @@ import org.slf4j.event.Level
 import java.time.Duration
 
 interface CatalogStore {
-    fun list(cursor: String?, limit: Int, categoryId: String?, sellerId: String?, status: ProductStatus?): Pair<List<Product>, String?>
+    fun list(cursor: String?, limit: Int, categoryId: String?, sellerId: String?, status: ProductStatus?, restrictToActive: Boolean = true): Pair<List<Product>, String?>
     fun find(id: String, publicOnly: Boolean): Product?
     fun findBySlug(slug: String): Product?
     fun create(input: ProductInput, actorId: String, correlationId: String): Product
@@ -72,11 +72,32 @@ fun Application.configureCatalogRoutes(repository: CatalogStore, redis: CatalogC
                 val cursor = call.request.queryParameters["cursor"]
                 val categoryId = call.request.queryParameters["categoryId"]
                 val sellerId = call.request.queryParameters["sellerId"]
-                val key = "catalog:list:${cursor.orEmpty()}:${categoryId.orEmpty()}:${sellerId.orEmpty()}:ACTIVE:$limit"
-                call.respond(cachedPage(redis, key) { val page = repository.list(cursor, limit, categoryId, sellerId, null); ProductPage(page.first, page.second, page.second != null) })
+                // Public browsing only ever sees ACTIVE products. A seller looking at their own
+                // catalog (sellerId matches their own JWT subject) or an admin needs every status
+                // -- otherwise a just-created DRAFT product is invisible to its own owner forever,
+                // since nothing else in this flow ever asks for a specific status. This check must
+                // stay self-scoped: this route has no other auth gate, so widening visibility for
+                // any authenticated caller (not just the matching owner/admin) would leak other
+                // sellers' unpublished drafts to anyone holding a valid token.
+                val principal = call.callerOrNull(verifier)
+                val restrictToActive = !(principal != null && (principal.subject == sellerId || "ADMIN" in principal.roles || "SUPER_ADMIN" in principal.roles))
+                val key = "catalog:list:${cursor.orEmpty()}:${categoryId.orEmpty()}:${sellerId.orEmpty()}:${if (restrictToActive) "ACTIVE" else "ALL"}:$limit"
+                call.respond(cachedPage(redis, key) { val page = repository.list(cursor, limit, categoryId, sellerId, null, restrictToActive); ProductPage(page.first, page.second, page.second != null) })
             }
             get("/slug/{slug}") { val slug = call.parameters.requireValue("slug"); call.respond(cachedProduct(redis, "catalog:slug:$slug") { repository.findBySlug(slug) } ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404)) }
-            get("/{productId}") { val id = call.parameters.requireValue("productId"); call.respond(cachedProduct(redis, "catalog:product:$id") { repository.find(id, true) } ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404)) }
+            get("/{productId}") {
+                val id = call.parameters.requireValue("productId")
+                // Same visibility rule as the list route above: fetch the real row regardless of
+                // status (publicOnly=false), then gate a non-ACTIVE result behind ownership/admin
+                // so the edit screen (and seller-service's ownsProduct check, which calls this same
+                // endpoint) can see a seller's own DRAFT products -- caching the full row is safe
+                // here because the gate is re-checked on every request, cache hit or not.
+                val product = cachedProduct(redis, "catalog:product:$id") { repository.find(id, false) } ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404)
+                if (product.status != ProductStatus.ACTIVE && !call.callerOrNull(verifier).let { it != null && (it.subject == product.sellerId || "ADMIN" in it.roles || "SUPER_ADMIN" in it.roles) }) {
+                    throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404)
+                }
+                call.respond(product)
+            }
             post { val principal = call.requirePermission(verifier, "PRODUCT_CREATE"); val request = call.receive<ProductRequest>(); val sellerId = if (request.ownerType.uppercase() == "SELLER") principal.subject else request.sellerId ?: principal.subject; val input = request.input(sellerId); val product = repository.create(input, principal.subject, call.callId.orEmpty()); redis.delete("catalog:slug:${input.slug}"); call.respond(HttpStatusCode.Created, product) }
             patch("/{productId}") { val principal = call.requirePermission(verifier, "PRODUCT_UPDATE"); val request = call.receive<ProductRequest>(); val existing = repository.find(call.parameters.requireValue("productId"), false) ?: throw ApiException(ErrorCode.NOT_FOUND, "Product not found.", 404); val sellerId = if (request.ownerType.uppercase() == "SELLER") principal.subject else request.sellerId ?: existing.sellerId; val product = repository.update(existing.id, request.input(sellerId), principal.subject, call.callId.orEmpty()); redis.delete("catalog:product:${existing.id}", "catalog:slug:${existing.slug}", "catalog:slug:${product.slug}"); call.respond(product) }
             delete("/{productId}") { val principal = call.requirePermission(verifier, "PRODUCT_DELETE"); val id = call.parameters.requireValue("productId"); val existing = repository.find(id, false); repository.delete(id, principal.subject, call.callId.orEmpty()); redis.delete("catalog:product:$id", "catalog:slug:${existing?.slug}"); call.respond(Message("Product archived.")) }
@@ -105,5 +126,7 @@ private val catalogJson = Json { ignoreUnknownKeys = true; encodeDefaults = true
 private fun cachedProduct(redis: CatalogCache, key: String, loader: () -> Product?): Product? = redis.get(key)?.let { runCatching { catalogJson.decodeFromString<Product>(it) }.getOrNull() } ?: loader()?.also { redis.put(key, catalogJson.encodeToString(it), Duration.ofSeconds(30)) }
 private fun cachedPage(redis: CatalogCache, key: String, loader: () -> ProductPage): ProductPage = redis.get(key)?.let { runCatching { catalogJson.decodeFromString<ProductPage>(it).takeIf { page -> page.items.isNotEmpty() || !page.hasMore } }.getOrNull() } ?: loader().also { redis.put(key, catalogJson.encodeToString(it), Duration.ofSeconds(20)) }
 private fun ApplicationCall.requirePermission(verifier: HmacJwtAccessVerifier, permission: String): VerifiedAccessToken { val raw = request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ")?.trim() ?: throw ApiException(ErrorCode.AUTHENTICATION_REQUIRED, "Authentication is required.", 401); val principal = verifier.verify(raw); if ("ADMIN" !in principal.roles && "SUPER_ADMIN" !in principal.roles && permission !in principal.permissions && "SELLER" !in principal.roles) throw ApiException(ErrorCode.FORBIDDEN, "You do not have permission for this operation.", 403); return principal }
+/** Best-effort auth for otherwise-public routes: never throws, just null when absent/invalid. */
+private fun ApplicationCall.callerOrNull(verifier: HmacJwtAccessVerifier): VerifiedAccessToken? = request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ")?.trim()?.let { runCatching { verifier.verify(it) }.getOrNull() }
 private fun ApplicationCall.requireInternal(expected:String){if(expected.isBlank()||request.headers["X-Internal-Service-Token"]!=expected)throw ApiException(ErrorCode.FORBIDDEN,"Internal service authentication failed.",403)}
 private fun Parameters.requireValue(name: String): String = this[name] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "Missing path parameter: $name", 400)

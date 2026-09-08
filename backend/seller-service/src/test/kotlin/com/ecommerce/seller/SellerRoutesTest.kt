@@ -5,6 +5,7 @@ import com.ecommerce.platform.error.ApiException
 import com.ecommerce.platform.error.ErrorCode
 import com.ecommerce.platform.security.HmacJwtAccessVerifier
 import com.ecommerce.platform.service.DownstreamResponse
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
@@ -35,7 +36,7 @@ import kotlin.test.assertTrue
 class SellerRoutesTest {
     private val json = Json { encodeDefaults = true; explicitNulls = false }
     private val verifier = HmacJwtAccessVerifier("issuer", "audience", mapOf("key-1" to "secret"))
-    private val config = SellerRouteConfig("catalog", "inventory", "promotion", "analytics", "internal-secret")
+    private val config = SellerRouteConfig("catalog", "inventory", "promotion", "analytics", "identity", "internal-secret")
 
     @Test
     fun `seller routes enforce identity, ownership and proxy downstream calls`() = testApplication {
@@ -48,18 +49,25 @@ class SellerRoutesTest {
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/profile") { auth(sellerToken) }.status)
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/products?limit=2") { auth(sellerToken) }.status)
         assertEquals("catalog", proxy.lastBase)
-        assertTrue(proxy.lastPath!!.contains("sellerId=seller-1"))
+        // sellerId here must be the JWT subject (user-1), not the seller-service record id
+        // (seller-1) -- catalog-service always persists sellerId as the caller's principal.subject
+        // for ownerType=SELLER (see catalog-service Application.kt), so seller-service has to
+        // query/compare using that same identity or list/ownership checks silently mismatch.
+        assertTrue(proxy.lastPath!!.contains("sellerId=user-1"))
         val product = client.post("/api/v1/seller/products") { auth(sellerToken); contentType(ContentType.Application.Json); setBody("{\"name\":\"Shoe\"}") }
         assertEquals(HttpStatusCode.OK, product.status)
         assertTrue(proxy.lastBody!!.contains("\"ownerType\":\"SELLER\""))
-        assertTrue(proxy.lastBody!!.contains("\"sellerId\":\"seller-1\""))
+        assertTrue(proxy.lastBody!!.contains("\"sellerId\":\"user-1\""))
         val invalid = client.post("/api/v1/seller/products") { auth(sellerToken); contentType(ContentType.Application.Json); setBody("not-json") }
         assertEquals(HttpStatusCode.BadRequest, invalid.status)
 
-        proxy.response = DownstreamResponse(200, "{\"sellerId\":\"seller-1\"}")
+        proxy.response = DownstreamResponse(200, "{\"sellerId\":\"user-1\"}")
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/products/product-1") { auth(sellerToken) }.status)
         assertEquals(HttpStatusCode.OK, client.patch("/api/v1/seller/products/product-1") { auth(sellerToken); contentType(ContentType.Application.Json); setBody("{\"name\":\"Updated\"}") }.status)
+        assertEquals(HttpStatusCode.OK, client.delete("/api/v1/seller/products/product-1") { auth(sellerToken) }.status)
         proxy.response = DownstreamResponse(200, "{\"sellerId\":\"seller-2\"}")
         assertEquals(HttpStatusCode.Forbidden, client.patch("/api/v1/seller/products/product-1") { auth(sellerToken); contentType(ContentType.Application.Json); setBody("{}") }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.delete("/api/v1/seller/products/product-1") { auth(sellerToken) }.status)
         proxy.response = DownstreamResponse(200, "{}")
         assertEquals(HttpStatusCode.Forbidden, client.patch("/api/v1/seller/products/product-1") { auth(sellerToken); contentType(ContentType.Application.Json); setBody("{}") }.status)
         proxy.response = DownstreamResponse(404, "missing")
@@ -78,7 +86,7 @@ class SellerRoutesTest {
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/orders/order-1") { auth(user) }.status)
         assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/seller/orders/missing") { auth(user) }.status)
         assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/seller/inventory") { auth(user) }.status)
-        proxy.response = DownstreamResponse(200, "{\"sellerId\":\"seller-1\"}")
+        proxy.response = DownstreamResponse(200, "{\"sellerId\":\"user-1\"}")
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/inventory?variantId=variant-1&productId=product-1") { auth(user) }.status)
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/promotions?limit=500") { auth(user) }.status)
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/seller/analytics") { auth(user) }.status)
@@ -112,6 +120,11 @@ class SellerRoutesTest {
         assertEquals(HttpStatusCode.InternalServerError, client.post("/api/v1/admin/sellers/seller-1/status") {
             auth(token("admin-1", roles = listOf("ADMIN"))); contentType(ContentType.Application.Json); setBody("{\"status\":\"not-a-status\"}")
         }.status)
+        assertEquals(HttpStatusCode.BadGateway, client.post("/api/v1/admin/sellers/seller-1/status") {
+            auth(token("operator", permissions = listOf("ADMIN_SELLER_UPDATE"))); contentType(ContentType.Application.Json); setBody("{\"status\":\"ACTIVE\"}")
+        }.status)
+
+        proxy.response = DownstreamResponse(200, "{\"ok\":true}")
         assertEquals(HttpStatusCode.OK, client.post("/api/v1/admin/sellers/seller-1/status") {
             auth(token("operator", permissions = listOf("ADMIN_SELLER_UPDATE"))); contentType(ContentType.Application.Json); setBody("{\"status\":\"ACTIVE\"}")
         }.status)

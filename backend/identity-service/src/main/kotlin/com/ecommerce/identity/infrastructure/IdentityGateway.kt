@@ -36,4 +36,5 @@ interface IdentityGateway {
     fun deleteAddress(userId: String, addressId: String, now: Instant): Int
     fun setDefaultAddress(userId: String, addressId: String, now: Instant): UserAddress
     fun deactivate(userId: String, now: Instant): Int
+    fun grantRole(userId: String, role: String, now: Instant): UserAccount
 }

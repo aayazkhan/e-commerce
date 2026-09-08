@@ -49,6 +49,7 @@ class IdentityModuleBootIntegrationTest {
                 "identity.jwt.keys" to "kid-1=secret",
                 "identity.kafka.bootstrapServers" to kafka.bootstrapServers,
                 "identity.kafka.tenantId" to "tenant-test",
+                "identity.internalServiceToken" to "internal-token",
             )
         }
         application { module() }

@@ -217,6 +217,7 @@ class IdentityService(
     fun adminUsers(limit: Int): List<UserAccount> = repository.listAccounts(limit)
     fun adminUser(userId: String): UserAccount = repository.account(userId) ?: throw ApiException(ErrorCode.NOT_FOUND, "User was not found.", 404)
     fun adminSetStatus(userId: String, status: UserStatus, actorId: String, correlationId: String): UserAccount = repository.setStatus(userId, status, actorId, correlationId)
+    fun grantRole(userId: String, role: String): UserAccount = repository.grantRole(userId, role, Instant.now())
 
     private fun randomToken(bytes: Int): String = ByteArray(bytes).also(random::nextBytes).let { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
     private fun validation(message: String): Nothing = throw ApiException(ErrorCode.VALIDATION_ERROR, message, 400)

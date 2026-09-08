@@ -37,6 +37,7 @@ val serviceRoutes: List<ServiceRoute> = listOf(
     ServiceRoute("/api/v1/admin/coupons", serviceBaseUrl("promotion-service", 8090)),
     ServiceRoute("/api/v1/admin/pricing", serviceBaseUrl("pricing-service", 8084)),
     ServiceRoute("/api/v1/admin/refunds", serviceBaseUrl("refund-service", 8094)),
+    ServiceRoute("/api/v1/admin/sellers", serviceBaseUrl("seller-service", 8100)),
     ServiceRoute("/api/v1/admin/reviews", serviceBaseUrl("review-service", 8097)),
     ServiceRoute("/api/v1/admin/search", serviceBaseUrl("search-service", 8086)),
     ServiceRoute("/api/v1/admin/cms", serviceBaseUrl("cms-service", 8101)),

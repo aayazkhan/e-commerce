@@ -4,6 +4,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
 export PORT="8080"
 export APP_ENV="local"
 export IDENTITY_SERVICE_URL="http://localhost:8081"
+export CATEGORY_SERVICE_URL="http://localhost:8082"
 export CATALOG_SERVICE_URL="http://localhost:8083"
 export SELLER_SERVICE_URL="http://localhost:8100"
 cd /Users/ayyazkhan/e-commerce

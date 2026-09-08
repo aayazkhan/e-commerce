@@ -93,6 +93,38 @@ class CatalogRoutesTest {
     }
 
     @Test
+    fun `product listing only widens beyond ACTIVE for the matching seller or an admin`() = testApplication {
+        val store = FakeCatalogStore()
+        val cache = FakeCatalogCache()
+        application { installRoutes(store, cache) }
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products?sellerId=seller-1").status)
+        assertEquals(true, store.lastRestrictToActive)
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products?sellerId=seller-1") { auth(token(subject = "someone-else")) }.status)
+        assertEquals(true, store.lastRestrictToActive)
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products?sellerId=seller-1") { auth(token(subject = "seller-1")) }.status)
+        assertEquals(false, store.lastRestrictToActive)
+
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products?sellerId=seller-1") { auth(token(roles = listOf("ADMIN"))) }.status)
+        assertEquals(false, store.lastRestrictToActive)
+    }
+
+    @Test
+    fun `a single non-ACTIVE product is only visible to its owner or an admin`() = testApplication {
+        val store = FakeCatalogStore()
+        store.findResult = sampleProduct.copy(status = ProductStatus.DRAFT)
+        val cache = FakeCatalogCache()
+        application { installRoutes(store, cache) }
+
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/products/prd-1").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/products/prd-1") { auth(token(subject = "someone-else")) }.status)
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products/prd-1") { auth(token(subject = "seller-1")) }.status)
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/products/prd-1") { auth(token(roles = listOf("ADMIN"))) }.status)
+    }
+
+    @Test
     fun `write routes enforce permissions and execute lifecycle plus cache invalidation`() = testApplication {
         val store = FakeCatalogStore()
         val cache = FakeCatalogCache()
@@ -274,10 +306,10 @@ class CatalogRoutesTest {
 
     private fun body(ownerType: String = "SELLER", sellerId: String? = null, slug: String = "new-shoe") = json.encodeToString(ProductRequest(sellerId = sellerId, ownerType = ownerType, categoryId = "cat-1", name = "Shoe", slug = slug, description = "A shoe"))
 
-    private fun token(roles: List<String> = emptyList(), permissions: List<String> = emptyList()): String {
+    private fun token(roles: List<String> = emptyList(), permissions: List<String> = emptyList(), subject: String = "admin-1"): String {
         val encoder = Base64.getUrlEncoder().withoutPadding()
         val header = encoder.encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"key-1\"}".toByteArray(StandardCharsets.UTF_8))
-        val claims = encoder.encodeToString("{\"subject\":\"admin-1\",\"roles\":[${roles.joinToString(",") { "\"$it\"" }}],\"permissions\":[${permissions.joinToString(",") { "\"$it\"" }}],\"tokenId\":\"token-1\",\"issuedAt\":1700000000,\"expiresAt\":2000000000,\"issuer\":\"issuer\",\"audience\":\"audience\"}".toByteArray(StandardCharsets.UTF_8))
+        val claims = encoder.encodeToString("{\"subject\":\"$subject\",\"roles\":[${roles.joinToString(",") { "\"$it\"" }}],\"permissions\":[${permissions.joinToString(",") { "\"$it\"" }}],\"tokenId\":\"token-1\",\"issuedAt\":1700000000,\"expiresAt\":2000000000,\"issuer\":\"issuer\",\"audience\":\"audience\"}".toByteArray(StandardCharsets.UTF_8))
         val input = "$header.$claims"
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec("secret".toByteArray(StandardCharsets.UTF_8), "HmacSHA256"))
@@ -289,13 +321,15 @@ class CatalogRoutesTest {
         var lastLimit = 0
         var lastCategoryId: String? = null
         var lastSellerId: String? = null
+        var lastRestrictToActive: Boolean? = null
         var createdBy: String? = null
         var createdInput: ProductInput? = null
         var updatedInput: ProductInput? = null
         var statusActor: String? = null
         var status = ProductStatus.DRAFT
-        override fun list(cursor: String?, limit: Int, categoryId: String?, sellerId: String?, status: ProductStatus?): Pair<List<Product>, String?> { listCalls++; lastLimit = limit; lastCategoryId = categoryId; lastSellerId = sellerId; return listOf(sampleProduct) to null }
-        override fun find(id: String, publicOnly: Boolean): Product? = sampleProduct.takeIf { it.id == id }
+        var findResult: Product? = sampleProduct
+        override fun list(cursor: String?, limit: Int, categoryId: String?, sellerId: String?, status: ProductStatus?, restrictToActive: Boolean): Pair<List<Product>, String?> { listCalls++; lastLimit = limit; lastCategoryId = categoryId; lastSellerId = sellerId; lastRestrictToActive = restrictToActive; return listOf(sampleProduct) to null }
+        override fun find(id: String, publicOnly: Boolean): Product? = findResult?.takeIf { it.id == id }
         override fun findBySlug(slug: String): Product? = sampleProduct.takeIf { it.slug == slug }
         override fun create(input: ProductInput, actorId: String, correlationId: String): Product { createdBy = actorId; createdInput = input; return sampleProduct.copy(slug = input.slug, sellerId = input.sellerId) }
         override fun update(id: String, input: ProductInput, actorId: String, correlationId: String): Product { updatedInput = input; return sampleProduct.copy(slug = input.slug, sellerId = input.sellerId) }

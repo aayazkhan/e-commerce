@@ -244,6 +244,33 @@ class IdentityRoutesTest {
     }
 
     @Test
+    fun `internal role grant requires the internal service token and updates the account`() = testApplication {
+        val fixture = fixture()
+        application { installRoutes(fixture) }
+
+        val unauthorized = client.post("/api/v1/internal/users/user-1/roles") {
+            contentType(ContentType.Application.Json)
+            setBody("{\"role\":\"SELLER\"}")
+        }
+        assertEquals(HttpStatusCode.Forbidden, unauthorized.status)
+
+        val wrongToken = client.post("/api/v1/internal/users/user-1/roles") {
+            contentType(ContentType.Application.Json)
+            header("X-Internal-Service-Token", "not-the-token")
+            setBody("{\"role\":\"SELLER\"}")
+        }
+        assertEquals(HttpStatusCode.Forbidden, wrongToken.status)
+
+        val granted = client.post("/api/v1/internal/users/user-1/roles") {
+            contentType(ContentType.Application.Json)
+            header("X-Internal-Service-Token", "test-internal-token")
+            setBody("{\"role\":\"SELLER\"}")
+        }
+        assertEquals(HttpStatusCode.OK, granted.status)
+        assertTrue(granted.bodyAsText().contains("SELLER"))
+    }
+
+    @Test
     fun `protected identity routes reject requests without authentication before reading resources`() = testApplication {
         val fixture = fixture()
         application { installRoutes(fixture) }
@@ -283,7 +310,7 @@ class IdentityRoutesTest {
             exception<ApiException> { call, error -> call.respond(HttpStatusCode.fromValue(error.statusCode), ApiError(error.errorCode, error.message, "request-1", error.fieldViolations, error.retryable)) }
             exception<Throwable> { call, _ -> call.respond(HttpStatusCode.InternalServerError, ApiError(com.ecommerce.platform.error.ErrorCode.INTERNAL_ERROR, "unexpected", "request-1")) }
         }
-        routing { identityRoutes(fixture.service, fixture.jwt) }
+        routing { identityRoutes(fixture.service, fixture.jwt, "test-internal-token") }
     }
 
     private fun fixture(account: UserAccount = account(), otpPurpose: String = OtpPurpose.LOGIN.name): Fixture {
@@ -337,6 +364,7 @@ class IdentityRoutesTest {
         override fun deleteAddress(userId: String, addressId: String, now: Instant) = 1
         override fun setDefaultAddress(userId: String, addressId: String, now: Instant) = addressValue
         override fun deactivate(userId: String, now: Instant) = 1
+        override fun grantRole(userId: String, role: String, now: Instant): UserAccount { accountValue = accountValue.copy(roles = accountValue.roles + role); return accountValue }
     }
 
     private companion object {

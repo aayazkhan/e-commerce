@@ -571,6 +571,14 @@ class IdentityRepository(private val dataSource: DataSource) : IdentityGateway, 
         insertSecurityEvent(connection, userId, "USER_DEACTIVATED", now, null, null)
     }
 
+    override fun grantRole(userId: String, role: String, now: Instant): UserAccount = transaction { connection ->
+        connection.prepareStatement("INSERT INTO user_roles (user_id, role) VALUES (?, ?) ON CONFLICT DO NOTHING").use { statement ->
+            statement.setString(1, userId); statement.setString(2, role); statement.executeUpdate()
+        }
+        insertSecurityEvent(connection, userId, "ROLE_GRANTED", now, null, null)
+        getAccount(connection, userId)
+    }
+
     fun markPhoneVerified(userId: String, now: Instant) = transaction { connection ->
         markPhoneVerified(connection, userId, now)
         insertSecurityEvent(connection, userId, "PHONE_VERIFIED", now, null, null)

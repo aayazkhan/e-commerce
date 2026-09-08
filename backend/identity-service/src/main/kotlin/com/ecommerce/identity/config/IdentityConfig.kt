@@ -11,6 +11,7 @@ data class IdentityConfig(
     val challengeDelivery: ChallengeDeliveryConfig,
     val oauth: OAuthConfig,
     val kafka: KafkaConfig,
+    val internalServiceToken: String,
 ) {
     companion object {
         fun from(config: ApplicationConfig): IdentityConfig = IdentityConfig(
@@ -50,6 +51,7 @@ data class IdentityConfig(
                 topic = config.propertyOrNull("identity.kafka.topic")?.getString() ?: "identity.events.v1",
                 tenantId = config.required("identity.kafka.tenantId"),
             ),
+            internalServiceToken = config.required("identity.internalServiceToken"),
         )
 
         private fun parseKeys(raw: String): Map<String, String> = raw.split(',')

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Shipped from shared:common so every service that depends on it (all 25 do) picks up real
-  logging without needing its own copy -- logback scans the whole runtime classpath for this
+  logging without needing its own copy: logback scans the whole runtime classpath for this
   file, not just the application module's own resources.
 -->
 <configuration>

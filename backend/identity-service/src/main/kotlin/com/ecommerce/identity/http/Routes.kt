@@ -22,7 +22,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
-fun Route.identityRoutes(service: IdentityService, jwtService: JwtService) {
+fun Route.identityRoutes(service: IdentityService, jwtService: JwtService, internalServiceToken: String) {
     route("/api/v1/auth") {
         post("/register") {
             val account = service.register(call.receive<RegisterRequest>().toCommand(), call.metadata())
@@ -160,6 +160,25 @@ fun Route.identityRoutes(service: IdentityService, jwtService: JwtService) {
         patch("/{userId}/status") { val principal = call.requireAdminPermission(jwtService, "ADMIN_USER_UPDATE"); val status = parseAdminStatus(call.receive<AdminUserStatusRequest>().status); call.respond(service.adminSetStatus(call.parameters.requireValue("userId"), status, principal.subject, call.metadata().requestId).toResponse()) }
         post("/{userId}/suspend") { val principal = call.requireAdminPermission(jwtService, "ADMIN_USER_UPDATE"); call.respond(service.adminSetStatus(call.parameters.requireValue("userId"), UserStatus.SUSPENDED, principal.subject, call.metadata().requestId).toResponse()) }
         post("/{userId}/restore") { val principal = call.requireAdminPermission(jwtService, "ADMIN_USER_UPDATE"); call.respond(service.adminSetStatus(call.parameters.requireValue("userId"), UserStatus.ACTIVE, principal.subject, call.metadata().requestId).toResponse()) }
+    }
+
+    // Service-to-service only (X-Internal-Service-Token), never reachable through the public
+    // gateway -- see ServiceRoutes.kt's own comment on why /api/v1/internal paths are absent
+    // from the routable prefix list. Used by seller-service when an admin approves a seller
+    // application, to grant the SELLER role so the newly-active seller can actually call
+    // catalog-service's product endpoints (which gate on role, not on a seller-service record).
+    route("/api/v1/internal/users/{userId}/roles") {
+        post {
+            call.requireInternal(internalServiceToken)
+            val role = call.receive<GrantRoleRequest>().role
+            call.respond(service.grantRole(call.parameters.requireValue("userId"), role).toResponse())
+        }
+    }
+}
+
+private fun ApplicationCall.requireInternal(expected: String) {
+    if (expected.isBlank() || request.headers["X-Internal-Service-Token"] != expected) {
+        throw ApiException(ErrorCode.FORBIDDEN, "Internal service authentication failed.", 403)
     }
 }
 

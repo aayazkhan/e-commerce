@@ -34,6 +34,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
@@ -63,7 +64,7 @@ interface SellerProxy {
     fun request(baseUrl: String, method: String, path: String, bearer: String? = null, body: String? = null, requestId: String? = null, internalToken: String? = null, actorId: String? = null): com.ecommerce.platform.service.DownstreamResponse
 }
 
-data class SellerRouteConfig(val catalogUrl: String, val inventoryUrl: String, val promotionUrl: String, val analyticsUrl: String, val internalServiceToken: String)
+data class SellerRouteConfig(val catalogUrl: String, val inventoryUrl: String, val promotionUrl: String, val analyticsUrl: String, val identityUrl: String, val internalServiceToken: String)
 
 fun Application.module() {
     val c=environment.config; val json=Json{ignoreUnknownKeys=true;encodeDefaults=true;explicitNulls=false}
@@ -79,7 +80,7 @@ fun Application.module() {
     routing {
         get("/health/live"){call.respond(Health("UP","seller-service"))};get("/health/ready"){if(runCatching{db.ping()&&redis.ping()}.getOrDefault(false))call.respond(Health("UP","seller-service"))else call.respond(HttpStatusCode.ServiceUnavailable,Health("DOWN","seller-service"))};get("/metrics"){call.respondText("seller_requests_total 1\nseller_consumer_lag_observed ${worker?.lagObserved?.get()?:0}\nseller_idor_denials_total 0\n",ContentType.Text.Plain)}
     }
-    configureSellerRoutes(SellerRepositoryAdapter(repo), SellerProxyAdapter(http), verifier, SellerRouteConfig(c.required("seller.catalogUrl"), c.required("seller.inventoryUrl"), c.required("seller.promotionUrl"), c.required("seller.analyticsUrl"), c.required("seller.internalServiceToken")), json)
+    configureSellerRoutes(SellerRepositoryAdapter(repo), SellerProxyAdapter(http), verifier, SellerRouteConfig(c.required("seller.catalogUrl"), c.required("seller.inventoryUrl"), c.required("seller.promotionUrl"), c.required("seller.analyticsUrl"), c.required("seller.identityUrl"), c.required("seller.internalServiceToken")), json)
 }
 
 fun Application.configureSellerRoutes(repository: SellerStore, proxyClient: SellerProxy, verifier: HmacJwtAccessVerifier, config: SellerRouteConfig, json: Json) {
@@ -91,14 +92,32 @@ fun Application.configureSellerRoutes(repository: SellerStore, proxyClient: Sell
         get("/api/v1/sellers/{sellerId}") { call.respond(repository.get(call.parameters["sellerId"]!!) ?: throw ApiException(ErrorCode.NOT_FOUND, "Seller not found.", 404)) }
         post("/api/v1/seller/applications") { val principal = call.requireAccess(verifier); call.respond(HttpStatusCode.Created, repository.create(principal.subject, call.receive(), principal.subject, call.callId.orEmpty())) }
         get("/api/v1/seller/profile") { call.respond(seller(call)) }; patch("/api/v1/seller/profile") { val principal = call.requireAccess(verifier); call.respond(repository.update(principal.subject, call.receive())) }
-        get("/api/v1/seller/products") { val current = seller(call); forward(call, proxyClient.request(config.catalogUrl, "GET", "/api/v1/products?sellerId=${current.id}&${call.request.queryParameters.entries().joinToString("&") { (k, v) -> "$k=${v.firstOrNull().orEmpty()}" }}", token(call), requestId = call.callId.orEmpty())) }
-        post("/api/v1/seller/products") { val current = seller(call); val raw = call.receiveText(); val body = runCatching { json.parseToJsonElement(raw).jsonObject.toMutableMap().apply { put("ownerType", kotlinx.serialization.json.JsonPrimitive("SELLER")); put("sellerId", kotlinx.serialization.json.JsonPrimitive(current.id)) }.let { json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), kotlinx.serialization.json.JsonObject(it)) } }.getOrElse { throw ApiException(ErrorCode.VALIDATION_ERROR, "Product JSON is invalid.", 400) }; forward(call, proxyClient.request(config.catalogUrl, "POST", "/api/v1/products", token(call), body, call.callId.orEmpty())) }
-        patch("/api/v1/seller/products/{productId}") { val current = seller(call); val id = call.parameters["productId"]!!; ownsProduct(call, id, current.id); forward(call, proxyClient.request(config.catalogUrl, "PATCH", "/api/v1/products/$id", token(call), call.receiveText(), call.callId.orEmpty())) }
+        get("/api/v1/seller/products") { seller(call); val principal = call.requireAccess(verifier); forward(call, proxyClient.request(config.catalogUrl, "GET", "/api/v1/products?sellerId=${principal.subject}&${call.request.queryParameters.entries().joinToString("&") { (k, v) -> "$k=${v.firstOrNull().orEmpty()}" }}", token(call), requestId = call.callId.orEmpty())) }
+        get("/api/v1/seller/products/{productId}") { seller(call); val principal = call.requireAccess(verifier); val id = call.parameters["productId"]!!; call.respondText(ownsProduct(call, id, principal.subject), ContentType.Application.Json) }
+        post("/api/v1/seller/products") { seller(call); val principal = call.requireAccess(verifier); val raw = call.receiveText(); val body = runCatching { json.parseToJsonElement(raw).jsonObject.toMutableMap().apply { put("ownerType", kotlinx.serialization.json.JsonPrimitive("SELLER")); put("sellerId", kotlinx.serialization.json.JsonPrimitive(principal.subject)) }.let { json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), kotlinx.serialization.json.JsonObject(it)) } }.getOrElse { throw ApiException(ErrorCode.VALIDATION_ERROR, "Product JSON is invalid.", 400) }; forward(call, proxyClient.request(config.catalogUrl, "POST", "/api/v1/products", token(call), body, call.callId.orEmpty())) }
+        patch("/api/v1/seller/products/{productId}") { seller(call); val principal = call.requireAccess(verifier); val id = call.parameters["productId"]!!; ownsProduct(call, id, principal.subject); forward(call, proxyClient.request(config.catalogUrl, "PATCH", "/api/v1/products/$id", token(call), call.receiveText(), call.callId.orEmpty())) }
+        delete("/api/v1/seller/products/{productId}") { seller(call); val principal = call.requireAccess(verifier); val id = call.parameters["productId"]!!; ownsProduct(call, id, principal.subject); forward(call, proxyClient.request(config.catalogUrl, "DELETE", "/api/v1/products/$id", token(call), requestId = call.callId.orEmpty())) }
         get("/api/v1/seller/orders") { call.respond(repository.orders(seller(call).id, call.request.queryParameters["limit"]?.toIntOrNull() ?: 100)) }; get("/api/v1/seller/orders/{orderId}") { val current = seller(call); val items = repository.orders(current.id, 100).filter { it.orderId == call.parameters["orderId"] }; if (items.isEmpty()) throw ApiException(ErrorCode.NOT_FOUND, "Order not found.", 404); call.respond(items) }
-        get("/api/v1/seller/inventory") { val current = seller(call); val variant = call.request.queryParameters["variantId"] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "variantId is required.", 400); val product = call.request.queryParameters["productId"] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "productId is required.", 400); ownsProduct(call, product, current.id); forward(call, proxyClient.request(config.inventoryUrl, "GET", "/api/v1/inventory/items/$variant", token(call), requestId = call.callId.orEmpty())) }
+        get("/api/v1/seller/inventory") { seller(call); val principal = call.requireAccess(verifier); val variant = call.request.queryParameters["variantId"] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "variantId is required.", 400); val product = call.request.queryParameters["productId"] ?: throw ApiException(ErrorCode.VALIDATION_ERROR, "productId is required.", 400); ownsProduct(call, product, principal.subject); forward(call, proxyClient.request(config.inventoryUrl, "GET", "/api/v1/inventory/items/$variant", token(call), requestId = call.callId.orEmpty())) }
         get("/api/v1/seller/promotions") { val current = seller(call); forward(call, proxyClient.request(config.promotionUrl, "GET", "/api/v1/internal/promotions?sellerId=${current.id}&limit=${call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 100) ?: 50}", internalToken = config.internalServiceToken, actorId = current.id, requestId = call.callId.orEmpty())) }; get("/api/v1/seller/analytics") { val current = seller(call); forward(call, proxyClient.request(config.analyticsUrl, "GET", "/api/v1/analytics/summary?sellerId=${current.id}", token(call), requestId = call.callId.orEmpty())) }
         get("/api/v1/seller/ledger") { call.respond(repository.ledger(seller(call).id)) }
-        post("/api/v1/admin/sellers/{sellerId}/status") { val principal = call.requirePermission(verifier, "ADMIN_SELLER_UPDATE"); val request = call.receive<SellerStatusRequest>(); call.respond(repository.transition(call.parameters["sellerId"]!!, request.status, principal.subject, request.reason, call.callId.orEmpty())) }
+        post("/api/v1/admin/sellers/{sellerId}/status") {
+            val principal = call.requirePermission(verifier, "ADMIN_SELLER_UPDATE")
+            val request = call.receive<SellerStatusRequest>()
+            val result = repository.transition(call.parameters["sellerId"]!!, request.status, principal.subject, request.reason, call.callId.orEmpty())
+            // Becoming ACTIVE only updates seller-service's own record by default -- the seller's
+            // JWT still only carries whatever roles they had at registration (CUSTOMER), and
+            // catalog-service's product endpoints gate on the SELLER role, not on this record.
+            // Grant it here so an activated seller can actually create/edit/delete products.
+            if (request.status == SellerStatus.ACTIVE) {
+                val roleGrant = proxyClient.request(config.identityUrl, "POST", "/api/v1/internal/users/${result.ownerUserId}/roles", internalToken = config.internalServiceToken, actorId = principal.subject, body = "{\"role\":\"SELLER\"}", requestId = call.callId.orEmpty())
+                if (roleGrant.status !in 200..299) {
+                    call.application.log.error("Seller ${result.id} activated but SELLER role grant failed for user ${result.ownerUserId}: ${roleGrant.status} ${roleGrant.body}")
+                    throw ApiException(ErrorCode.DEPENDENCY_UNAVAILABLE, "Seller was activated, but granting the SELLER role failed. Retry the status update.", 502, retryable = true)
+                }
+            }
+            call.respond(result)
+        }
         post("/api/v1/admin/sellers/{sellerId}/ledger") { val principal = call.requirePermission(verifier, "ADMIN_SELLER_UPDATE"); call.respond(repository.addLedger(call.parameters["sellerId"]!!, call.receive(), principal.subject)) }
     }
 }

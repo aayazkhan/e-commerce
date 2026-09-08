@@ -51,6 +51,23 @@ private val corsResponseHeaders = setOf(
     "Access-Control-Max-Age",
 ).map { it.lowercase() }.toSet()
 
+/**
+ * CORS is exclusively a browser<->first-hop-server contract: the gateway's own CORS plugin
+ * already gated this request before ProxyHandler ever runs. Forwarding the browser's Origin
+ * header on to the downstream service is not just redundant -- every proxied service installs
+ * its own CORS plugin too (for when it's reachable directly), and Ktor's CORS plugin applies
+ * to ANY request carrying an Origin header, gateway-proxied or not. That plugin re-validates the
+ * method against that service's own, narrower allowlist and silently 403s the gateway-to-service
+ * hop if it doesn't match -- which broke every PATCH/DELETE proxied call even after the gateway's
+ * own CORS config was fixed, since each service's own config was never (and shouldn't need to be)
+ * kept in sync with the gateway's.
+ */
+private val corsRequestHeaders = setOf(
+    HttpHeaders.Origin,
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers",
+).map { it.lowercase() }.toSet()
+
 suspend fun proxyToService(call: ApplicationCall, client: HttpClient) {
     val requestUri = call.request.uri
     val path = requestUri.substringBefore('?')
@@ -64,7 +81,7 @@ suspend fun proxyToService(call: ApplicationCall, client: HttpClient) {
         method = call.request.httpMethod
         headers {
             call.request.headers.toMap().forEach { (key, values) ->
-                if (key.lowercase() !in hopByHopHeaders) {
+                if (key.lowercase() !in hopByHopHeaders && key.lowercase() !in corsRequestHeaders) {
                     values.forEach { append(key, it) }
                 }
             }

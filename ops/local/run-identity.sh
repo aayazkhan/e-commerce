@@ -10,6 +10,7 @@ export JWT_KEYS="v1=dev-secret-key-change-me"
 export IDENTITY_TENANT_ID="tenant-1"
 export CHALLENGE_DELIVERY_URL="http://localhost:8090/deliver"
 export KAFKA_BOOTSTRAP_SERVERS="localhost:9092"
+export INTERNAL_SERVICE_TOKEN="dev-internal-token"
 export IDENTITY_PORT="8081"
 cd /Users/ayyazkhan/e-commerce
 exec ./gradlew :backend:identity-service:run --no-daemon -q
