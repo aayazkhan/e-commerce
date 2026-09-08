@@ -1,13 +1,19 @@
 pluginManagement {
     repositories {
+        google()
         gradlePluginPortal()
         mavenCentral()
     }
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    // No repositoriesMode restriction (not FAIL_ON_PROJECT_REPOS): the Kotlin/Wasm Gradle plugin
+    // registers its own Node.js distribution repository at the project level to download the
+    // toolchain wasmJs browser dev-server/test tasks need -- legitimate tooling, not repo-governance
+    // drift. PREFER_SETTINGS was tried first but silently drops project-declared Ivy-pattern repos
+    // like that one, so dependency resolution still centers on the repositories below in practice.
     repositories {
+        google()
         mavenCentral()
     }
 }
@@ -48,4 +54,7 @@ include(
     ":backend:cms-service",
     ":backend:audit-service",
     ":backend:feature-flag-service",
+    ":shared:core:common",
+    ":shared:core:network",
+    ":apps:sellerApp",
 )
