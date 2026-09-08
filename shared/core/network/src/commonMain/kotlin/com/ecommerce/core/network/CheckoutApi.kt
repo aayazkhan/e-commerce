@@ -47,10 +47,36 @@ data class CheckoutResponse(
     val updatedAt: String,
 )
 
+/** Mirrors payment-service's PayuFormFields exactly -- the fields a browser must POST (as a real
+ * HTML form, not fetch) to PayU's hosted checkout page. Carried as JSON in
+ * CheckoutPayment.clientSecret whenever CheckoutResponse.status is PAYMENT_ACTION_REQUIRED and
+ * the checkout used the PAYU provider. */
+@Serializable
+data class PayuFormFields(
+    val actionUrl: String,
+    val key: String,
+    val txnid: String,
+    val amount: String,
+    val productinfo: String,
+    val firstname: String,
+    val email: String,
+    val phone: String,
+    val surl: String,
+    val furl: String,
+    val udf1: String,
+    val hash: String,
+    @kotlinx.serialization.SerialName("service_provider") val serviceProvider: String = "payu_paisa",
+)
+
 /** Requires a logged-in user (guest checkout is not supported -- the cart must be merged into a user cart first). */
 class CheckoutApi(private val client: ApiClient) {
     suspend fun start(request: CheckoutRequest, idempotencyKey: String): ApiResult<CheckoutResponse> =
         client.post("/api/v1/checkout", request, mapOf("Idempotency-Key" to idempotencyKey))
 
     suspend fun get(checkoutId: String): ApiResult<CheckoutResponse> = client.get("/api/v1/checkout/$checkoutId")
+
+    /** Re-runs the saga for an existing checkout -- used after returning from an async payment
+     * provider (PayU) to pick up where the saga left off, now that the provider has confirmed. */
+    suspend fun retry(checkoutId: String, request: CheckoutRequest, idempotencyKey: String): ApiResult<CheckoutResponse> =
+        client.post("/api/v1/checkout/$checkoutId/retry", request, mapOf("Idempotency-Key" to idempotencyKey))
 }

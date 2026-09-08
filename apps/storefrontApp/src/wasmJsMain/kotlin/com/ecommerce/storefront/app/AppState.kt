@@ -40,4 +40,8 @@ sealed interface Screen {
     data object Register : Screen
     data object Checkout : Screen
     data class OrderConfirmation(val checkoutId: String) : Screen
+
+    /** Landed here right after a PayU redirect returns -- see JsInterop.kt/CheckoutScreen.kt's
+     * PendingPayuCheckout and payment-service's PayuPaymentProvider callback route. */
+    data class PaymentReturn(val checkoutId: String, val outcome: String) : Screen
 }

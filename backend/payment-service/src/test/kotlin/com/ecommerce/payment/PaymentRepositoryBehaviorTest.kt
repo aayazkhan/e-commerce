@@ -42,6 +42,32 @@ class PaymentRepositoryBehaviorTest {
     }
 
     @Test
+    fun `an idempotent retry after an async provider webhook does not call the provider again`() {
+        // Mirrors PayU's flow: create() only ever gets the provider to REQUIRES_ACTION
+        // synchronously; a webhook (or our surl/furl callback) later moves the payment to
+        // CAPTURED out of band. checkout-service's retry then calls create() again with the same
+        // Idempotency-Key -- that replay must NOT call the provider a second time, since
+        // finalize() would then try an invalid CAPTURED -> REQUIRES_ACTION transition and throw.
+        val database = FakePaymentDatabase()
+        val provider = FakeProvider(createStatus = PaymentStatus.REQUIRES_ACTION)
+        val repository = PaymentRepository(database.dataSource(), mapOf(PaymentProviderName.HTTP to provider))
+
+        val created = repository.create("user-1", request, "key-1", "corr-1")
+        assertEquals(PaymentStatus.REQUIRES_ACTION, created.status)
+        assertEquals(1, provider.createCalls)
+
+        repository.webhook(
+            PaymentProviderName.HTTP,
+            PaymentWebhookRequest("event-1", "provider-1", PaymentStatus.CAPTURED, request.amountMinor, request.currency),
+            "corr-2",
+        )
+
+        val retried = repository.create("user-1", request, "key-1", "corr-3")
+        assertEquals(PaymentStatus.CAPTURED, retried.status)
+        assertEquals(1, provider.createCalls)
+    }
+
+    @Test
     fun `create maps missing and duplicate providers while preserving database errors`() {
         val missingProvider = PaymentRepository(FakePaymentDatabase().dataSource(), emptyMap())
         val unavailable = assertFailsWith<ApiException> { missingProvider.create("user-1", request, "key-1", "corr") }
@@ -227,11 +253,15 @@ class PaymentRepositoryBehaviorTest {
         private val createFailure: Boolean = false,
         private val refundStatus: PaymentStatus = PaymentStatus.REFUNDED,
         private val queryStatus: PaymentStatus = PaymentStatus.AUTHORIZED,
+        private val createStatus: PaymentStatus = PaymentStatus.CAPTURED,
     ) : PaymentProvider {
         override val name = PaymentProviderName.HTTP
+        var createCalls = 0
+            private set
         override fun create(request: ProviderCreateRequest): ProviderPayment {
+            createCalls += 1
             if (createFailure) error("provider create failed")
-            return ProviderPayment("provider-1", PaymentStatus.CAPTURED, "client-secret")
+            return ProviderPayment("provider-1", createStatus, "client-secret")
         }
         override fun query(providerPaymentId: String) = ProviderPayment(providerPaymentId, queryStatus)
         override fun refund(providerPaymentId: String, amountMinor: Long, currency: String, idempotencyKey: String) = ProviderRefund("refund-1", refundStatus)

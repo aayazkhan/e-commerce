@@ -28,17 +28,26 @@ class PaymentRepository(private val dataSource: DataSource, private val provider
             try { c.prepareStatement("INSERT INTO payment_intents(id,user_id,order_id,provider,status,amount_minor,currency,idempotency_key,request_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)").use{s->s.setString(1,id);s.setString(2,userId);s.setString(3,request.orderId);s.setString(4,request.provider.name);s.setString(5,PaymentStatus.PROCESSING.name);s.setLong(6,request.amountMinor);s.setString(7,request.currency);s.setString(8,key);s.setString(9,hash);s.setTimestamp(10,now.ts());s.setTimestamp(11,now.ts());s.executeUpdate()};c.prepareStatement("INSERT INTO payment_attempts(id,payment_id,attempt_no,status,created_at) VALUES (?,?,?,?,?)").use{s->s.setString(1,CommerceId.new("patt").value);s.setString(2,id);s.setInt(3,1);s.setString(4,PaymentStatus.PROCESSING.name);s.setTimestamp(5,now.ts());s.executeUpdate()} } catch(e:SQLException){if(e.sqlState=="23505") throw ApiException(ErrorCode.CONFLICT,"Payment idempotency key is already in use.",409);throw e}
             get(c,id)!!
         }
+        // An idempotent replay (e.g. checkout-service retrying after an async provider redirect
+        // like PayU's) must NOT call the provider again: providerPaymentId is already set the
+        // moment the first create() call finalizes (see finalize() below), even while the
+        // provider status is still REQUIRES_ACTION. Calling create() a second time here would
+        // hand the provider a fresh transaction id and, once a webhook has since moved this
+        // payment past REQUIRES_ACTION, finalize() would then attempt an invalid state
+        // transition (e.g. CAPTURED -> REQUIRES_ACTION) and throw a 409.
+        if (initial.providerPaymentId != null) return initial
         val provider = providers[request.provider] ?: throw ApiException(ErrorCode.DEPENDENCY_UNAVAILABLE,"Payment provider is unavailable.",503,true)
-        val providerPayment = try { provider.create(ProviderCreateRequest(initial.id,request.orderId,request.amountMinor,request.currency,request.paymentMethodToken,request.returnUrl)) } catch (error: Exception) { throw error }
+        val providerPayment = try { provider.create(ProviderCreateRequest(initial.id,request.orderId,request.amountMinor,request.currency,request.paymentMethodToken,request.returnUrl,request.customerName,request.customerEmail,request.customerPhone,request.checkoutId)) } catch (error: Exception) { throw error }
         return finalize(initial.id,providerPayment,correlationId)
     }
 
     override fun getOwned(userId: String,id:String):PaymentResponse?=withConnection{get(it,id,userId)}
     override fun getInternal(id:String):PaymentResponse?=withConnection{get(it,id)}
+    override fun getByProviderPaymentId(providerPaymentId:String):PaymentResponse?=withConnection{getByProvider(it,providerPaymentId,false)}
 
     override fun webhook(providerName: PaymentProviderName, request: PaymentWebhookRequest, correlationId: String): PaymentResponse {
         return transaction { c ->
-            val now=Instant.now();val inserted=c.prepareStatement("INSERT INTO payment_webhooks(id,provider,provider_event_id,payload_json,received_at,processed_at) VALUES (?,?,?,?,?,?) ON CONFLICT(provider,provider_event_id) DO NOTHING").use{s->s.setString(1,CommerceId.new("pwh").value);s.setString(2,providerName.name);s.setString(3,request.providerEventId);s.setString(4,json.encodeToString(request.payload));s.setTimestamp(5,now.ts());s.setTimestamp(6,now.ts());s.executeUpdate()}
+            val now=Instant.now();val inserted=c.prepareStatement("INSERT INTO payment_webhooks(id,provider,provider_event_id,payload_json,received_at,processed_at) VALUES (?,?,?,?::jsonb,?,?) ON CONFLICT(provider,provider_event_id) DO NOTHING").use{s->s.setString(1,CommerceId.new("pwh").value);s.setString(2,providerName.name);s.setString(3,request.providerEventId);s.setString(4,json.encodeToString(request.payload));s.setTimestamp(5,now.ts());s.setTimestamp(6,now.ts());s.executeUpdate()}
             val payment=getByProvider(c,request.providerPaymentId,true) ?: throw ApiException(ErrorCode.NOT_FOUND,"Payment not found.",404)
             if(payment.amountMinor!=request.amountMinor || payment.currency!=request.currency) throw ApiException(ErrorCode.CONFLICT,"Payment webhook amount does not match the intent.",409)
             updateStatus(c,payment.id,request.status,request.providerPaymentId,null,correlationId,now)

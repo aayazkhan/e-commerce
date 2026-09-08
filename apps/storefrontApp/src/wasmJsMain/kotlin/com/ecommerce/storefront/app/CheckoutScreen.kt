@@ -24,17 +24,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.FilterChip
 import com.ecommerce.core.common.ApiResult
 import com.ecommerce.core.network.AddressApi
 import com.ecommerce.core.network.AddressRequest
 import com.ecommerce.core.network.AddressResponse
 import com.ecommerce.core.network.CheckoutApi
 import com.ecommerce.core.network.CheckoutRequest
+import com.ecommerce.core.network.PayuFormFields
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+
+private enum class PaymentMethod { COD, PAYU }
+
+/** The bookkeeping a PayU redirect needs to survive the full-page navigation away from and back
+ * to this app -- see JsInterop.kt's localStorage functions and main.kt's handling of the
+ * `?checkoutId=&payment=` query params PayU's callback redirects back with. */
+@kotlinx.serialization.Serializable
+data class PendingPayuCheckout(val idempotencyKey: String, val addressId: String)
+
+internal fun pendingPayuKey(checkoutId: String) = "payu_pending_$checkoutId"
 
 private sealed interface CheckoutState {
     data object LoadingAddresses : CheckoutState
-    data class PickingAddress(val addresses: List<AddressResponse>, val addingNew: Boolean) : CheckoutState
+    data class PickingAddress(val addresses: List<AddressResponse>, val addingNew: Boolean, val paymentMethod: PaymentMethod = PaymentMethod.COD) : CheckoutState
     data object Placing : CheckoutState
     data class Placed(val checkoutId: String, val status: String, val orderId: String?, val error: String?) : CheckoutState
     data class Failed(val message: String) : CheckoutState
@@ -63,17 +76,32 @@ fun CheckoutScreen(
 
     LaunchedEffect(Unit) { loadAddresses() }
 
-    fun placeOrder(addressId: String) {
+    fun placeOrder(addressId: String, method: PaymentMethod) {
         state = CheckoutState.Placing
         scope.launch {
-            val request = CheckoutRequest(
-                shippingAddressId = addressId,
-                paymentMethodToken = "cod",
-                paymentProvider = "COD",
-            )
-            when (val result = checkoutApi.start(request, "web-checkout-${kotlin.random.Random.nextInt()}")) {
+            val idempotencyKey = "web-checkout-${kotlin.random.Random.nextInt()}"
+            val request = when (method) {
+                PaymentMethod.COD -> CheckoutRequest(shippingAddressId = addressId, paymentMethodToken = "cod", paymentProvider = "COD")
+                PaymentMethod.PAYU -> CheckoutRequest(shippingAddressId = addressId, paymentMethodToken = "payu", paymentProvider = "PAYU")
+            }
+            when (val result = checkoutApi.start(request, idempotencyKey)) {
                 is ApiResult.Success -> {
                     val response = result.value
+                    val clientSecret = response.payment?.clientSecret
+                    if (response.status == "PAYMENT_ACTION_REQUIRED" && method == PaymentMethod.PAYU && clientSecret != null) {
+                        localStorageSet(pendingPayuKey(response.checkoutId), Json.encodeToString(PendingPayuCheckout(idempotencyKey, addressId)))
+                        val fields = Json { ignoreUnknownKeys = true }.decodeFromString<PayuFormFields>(clientSecret)
+                        val formJson = Json.encodeToString(
+                            mapOf(
+                                "key" to fields.key, "txnid" to fields.txnid, "amount" to fields.amount,
+                                "productinfo" to fields.productinfo, "firstname" to fields.firstname, "email" to fields.email,
+                                "phone" to fields.phone, "surl" to fields.surl, "furl" to fields.furl,
+                                "udf1" to fields.udf1, "hash" to fields.hash, "service_provider" to fields.serviceProvider,
+                            ),
+                        )
+                        submitRedirectForm(fields.actionUrl, formJson)
+                        return@launch // browser is navigating away to PayU now
+                    }
                     state = CheckoutState.Placed(response.checkoutId, response.status, response.orderId, response.error)
                     if (response.status == "COMPLETED") onOrderPlaced(response.checkoutId)
                 }
@@ -94,6 +122,9 @@ fun CheckoutScreen(
                 if (current.status == "COMPLETED") {
                     Text("Order placed!", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                     Text("Order ${current.orderId} -- payment on delivery.")
+                } else if (current.status == "PAYMENT_ACTION_REQUIRED") {
+                    CircularProgressIndicator()
+                    Text("Redirecting to PayU...")
                 } else {
                     Text("Checkout could not complete", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
                     Text(current.error ?: "Please try again.")
@@ -135,8 +166,17 @@ fun CheckoutScreen(
                 SecondaryButton("Add a new address", modifier = Modifier.fillMaxWidth()) {
                     state = current.copy(addingNew = true)
                 }
-                PrimaryButton("Place order (Cash on delivery)", enabled = selectedAddressId != null, modifier = Modifier.fillMaxWidth()) {
-                    selectedAddressId?.let { placeOrder(it) }
+                Text("Payment method", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = current.paymentMethod == PaymentMethod.COD, onClick = { state = current.copy(paymentMethod = PaymentMethod.COD) }, label = { Text("Cash on delivery") })
+                    FilterChip(selected = current.paymentMethod == PaymentMethod.PAYU, onClick = { state = current.copy(paymentMethod = PaymentMethod.PAYU) }, label = { Text("PayU (demo)") })
+                }
+                PrimaryButton(
+                    if (current.paymentMethod == PaymentMethod.COD) "Place order (Cash on delivery)" else "Pay with PayU",
+                    enabled = selectedAddressId != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    selectedAddressId?.let { placeOrder(it, current.paymentMethod) }
                 }
             }
         }

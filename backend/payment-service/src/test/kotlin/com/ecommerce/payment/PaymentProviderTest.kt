@@ -118,6 +118,53 @@ class PaymentProviderTest {
         }
     }
 
+    @Test
+    fun `payu provider builds a signed hosted-checkout form and verifies its own reverse hash`() {
+        val provider = PayuPaymentProvider("test-key", "test-salt", "https://test.payu.in", "https://payments.local/callback", "https://payments.local/callback")
+        val request = ProviderCreateRequest("payment-1", "order-1", 54999, "INR", "payu", null, "Jane Doe", "jane@example.com", "9999999999", "checkout-1")
+
+        val result = provider.create(request)
+        assertEquals(PaymentStatus.REQUIRES_ACTION, result.status)
+        val fields = kotlinx.serialization.json.Json.decodeFromString<PayuFormFields>(result.clientSecret!!)
+        assertEquals("test-key", fields.key)
+        assertEquals("549.99", fields.amount)
+        assertEquals("checkout-1", fields.udf1)
+        assertEquals("https://test.payu.in/_payment", fields.actionUrl)
+
+        val requestHash = sha512(
+            (listOf("test-key", fields.txnid, "549.99", "order-1", "Jane Doe", "jane@example.com", "checkout-1") + List(9) { "" } + "test-salt")
+                .joinToString("|"),
+        )
+        assertEquals(requestHash, fields.hash)
+
+        // The reverse hash PayU would send back on a successful callback for this same txn.
+        val callbackFields = mapOf(
+            "status" to "success",
+            "txnid" to fields.txnid,
+            "amount" to "549.99",
+            "productinfo" to "order-1",
+            "firstname" to "Jane Doe",
+            "email" to "jane@example.com",
+            "udf1" to "checkout-1",
+            "hash" to sha512(
+                (listOf("test-salt", "success") + List(9) { "" } + listOf("checkout-1", "jane@example.com", "Jane Doe", "order-1", "549.99", fields.txnid, "test-key"))
+                    .joinToString("|"),
+            ),
+        )
+        assertTrue(provider.verifyResponseHash(callbackFields))
+        assertFalse(provider.verifyResponseHash(callbackFields + ("amount" to "1.00")))
+        assertFalse(provider.verifyResponseHash(callbackFields - "hash"))
+    }
+
+    @Test
+    fun `payu provider rejects create when unconfigured`() {
+        val request = ProviderCreateRequest("payment-1", "order-1", 1000, "INR", "payu", null)
+        val error = assertFailsWith<ApiException> { PayuPaymentProvider("", "", "https://test.payu.in", "", "").create(request) }
+        assertEquals(ErrorCode.DEPENDENCY_UNAVAILABLE, error.errorCode)
+    }
+
+    private fun sha512(value: String) = java.security.MessageDigest.getInstance("SHA-512").digest(value.toByteArray(StandardCharsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
     private fun server(handler: (HttpExchange) -> Unit): HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).also {
         it.createContext("/") { exchange -> handler(exchange) }
         it.start()

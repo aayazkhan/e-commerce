@@ -93,7 +93,7 @@ class PaymentRoutesTest {
             exception<ApiException> { call, error -> call.respond(HttpStatusCode.fromValue(error.statusCode), ApiError(error.errorCode, error.message, "request-1", error.fieldViolations, error.retryable)) }
             exception<Throwable> { call, _ -> call.respond(HttpStatusCode.InternalServerError, ApiError(ErrorCode.INTERNAL_ERROR, "unexpected", "request-1")) }
         }
-        routing { configurePaymentRoutes(store, verifier, "internal", webhooks, json) }
+        routing { configurePaymentRoutes(store, verifier, "internal", webhooks, json, PayuPaymentProvider("key", "salt", "https://test.payu.in", "http://localhost:8092/api/v1/payments/payu/callback", "http://localhost:8092/api/v1/payments/payu/callback"), "http://localhost:3002") }
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.auth(value: String) = header(HttpHeaders.Authorization, "Bearer $value")
@@ -121,6 +121,7 @@ class PaymentRoutesTest {
         override fun create(userId: String, request: PaymentCreateRequest, key: String, correlationId: String): PaymentResponse { createdUser = userId; return payment }
         override fun getOwned(userId: String, id: String): PaymentResponse? { failure?.let { throw it }; return payment.takeIf { it.userId == userId && it.id == id } }
         override fun getInternal(id: String): PaymentResponse? { failure?.let { throw it }; return payment.takeIf { it.id == id } }
+        override fun getByProviderPaymentId(providerPaymentId: String): PaymentResponse? = payment.takeIf { it.providerPaymentId == providerPaymentId }
         override fun webhook(providerName: PaymentProviderName, request: PaymentWebhookRequest, correlationId: String): PaymentResponse { webhookSeen = true; return payment }
         override fun refund(id: String, userId: String?, request: RefundPaymentRequest, correlationId: String) = RefundPaymentResponse(id, request.amountMinor, PaymentStatus.REFUNDED, "refund-1", "2026-08-21T00:00:00Z")
     }

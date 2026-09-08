@@ -124,7 +124,7 @@ class CheckoutClientsTest {
             service.release("user-1", "internal", reservation.id, "key-1")
             service.commit("user-1", "internal", reservation.id, "key-1")
             assertEquals("order-1", service.createOrder("user-1", "bearer", "internal", "checkout-1", reservation.id, details, totals()).id)
-            assertEquals("payment-1", service.createPayment("user-1", "internal", "checkout-1", "order-1", totals(), request()).id)
+            assertEquals("payment-1", service.createPayment("user-1", "internal", "checkout-1", "order-1", totals(), request(), details).id)
             assertEquals("redemption-1", service.applyPromotion("user-1", "internal", "checkout-1", "order-1", details.items, request(couponCode = "SAVE10"), totals()).id)
             service.commitPromotion("user-1", "internal", "redemption-1")
             service.releasePromotion("user-1", "internal", "redemption-1")
@@ -150,7 +150,7 @@ class CheckoutClientsTest {
         val service = CheckoutClients(json, "warehouse-1", clients(payment = payment, promotion = promotion))
 
         kotlinx.coroutines.runBlocking {
-            assertEquals(null, service.createPayment("user-1", "internal", "checkout-1", "order-1", totals(), request()).clientSecret)
+            assertEquals(null, service.createPayment("user-1", "internal", "checkout-1", "order-1", totals(), request(), details).clientSecret)
             assertEquals(null, service.applyPromotion("user-1", "internal", "checkout-1", "order-1", details.items, request(), totals()).orderId)
         }
 
@@ -163,7 +163,7 @@ class CheckoutClientsTest {
         val payment = FakeClient(posts = listOf(InternalHttpResponse(503, "down")))
         val service = CheckoutClients(json, "warehouse-1", clients(payment = payment))
         val error = assertFailsWith<ApiException> {
-            kotlinx.coroutines.runBlocking { service.createPayment("user-1", "internal", "checkout-1", "order-1", totals(), request()) }
+            kotlinx.coroutines.runBlocking { service.createPayment("user-1", "internal", "checkout-1", "order-1", totals(), request(), details()) }
         }
         assertEquals(ErrorCode.DEPENDENCY_UNAVAILABLE, error.errorCode)
         assertEquals(503, error.statusCode)
@@ -203,7 +203,7 @@ class CheckoutClientsTest {
         kotlinx.coroutines.runBlocking {
             downstream.reserve("user-1", "", "key-1", details.items, "internal")
             downstream.createOrder("user-1", "", "internal", "checkout-1", "reservation-1", details, totals)
-            downstream.createPayment("user-1", "internal", "checkout-1", "order-1", totals, request())
+            downstream.createPayment("user-1", "internal", "checkout-1", "order-1", totals, request(), details)
             downstream.applyPromotion("user-1", "internal", "checkout-1", "order-1", details.items, request(), totals)
             downstream.createShipment("user-1", "internal", "checkout-1", "order-1", details, totals, request())
         }
@@ -216,6 +216,7 @@ class CheckoutClientsTest {
     private fun request(couponCode: String? = null, billingAddressId: String? = null) = CheckoutRequest("cart-1", "address-1", billingAddressId, CheckoutShippingMethod.EXPRESS, "token", "HTTP", "INR", couponCode)
     private fun totals() = CheckoutTotals(1000, 0, 100, 50, 180, 1130, "INR")
     private fun address() = AddressSnapshotWire("address-1", "Customer", "+911234567890", "Line 1", null, "Pune", "MH", "411001", "IN")
+    private fun details() = CheckoutDetails(listOf(OrderItemWire("product-1", "variant-1", "Shoe", "SKU-1", "seller-1", 1, 500, 0, 0, 500, "INR", "v1")), address(), address(), "cart-1")
     private fun addressJson() = """[{"id":"address-1","label":"HOME","recipientName":"Customer","phone":"+911234567890","line1":"Line 1","line2":null,"city":"Pune","state":"MH","postalCode":"411001","country":"IN","latitude":null,"longitude":null,"isDefault":true},{"id":"address-2","label":"WORK","recipientName":"Customer","phone":"+911234567890","line1":"Line 2","line2":"Floor 2","city":"Pune","state":"MH","postalCode":"411002","country":"IN","latitude":18.5,"longitude":73.8,"isDefault":false}]"""
     private fun productJson() = """{"id":"product-1","name":"Shoe","variants":[{"id":"variant-1","productId":"product-1","sku":"SKU-1","barcode":null,"attributes":{"size":"9"}}]}"""
     private fun cartJson(valid: Boolean, empty: Boolean) = """{"cart":{"id":"cart-1","userId":"user-1","currency":"INR","version":1,"items":${if (empty) "[]" else "[{\"id\":\"item-1\",\"productId\":\"product-1\",\"variantId\":\"variant-1\",\"quantity\":2,\"unitPriceMinor\":500,\"currency\":\"INR\",\"priceVersion\":\"v1\",\"addedAt\":\"2026-08-20T00:00:00Z\",\"updatedAt\":\"2026-08-20T00:00:00Z\"}]"}},"valid":$valid,"warnings":[{"variantId":"variant-1","code":"STALE","message":"${if (valid && !empty) "ignored" else if (!valid) "stale cart" else "cart is empty"}"}]}"""

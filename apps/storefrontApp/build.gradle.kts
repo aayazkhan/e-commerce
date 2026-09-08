@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -23,6 +24,7 @@ kotlin {
                 implementation(project(":shared:core:common"))
                 implementation(project(":shared:core:network"))
                 implementation(libs.ktor.client.js)
+                implementation(libs.kotlinx.serialization.json)
                 @Suppress("DEPRECATION")
                 implementation(compose.runtime)
                 @Suppress("DEPRECATION")

@@ -444,7 +444,7 @@ class CheckoutSagaTest {
             return OrderWire("order-1", "INVENTORY_RESERVED", totals.totalMinor)
         }
 
-        override suspend fun createPayment(userId: String, token: String, checkoutId: String, orderId: String, totals: CheckoutTotals, request: CheckoutRequest): PaymentWire {
+        override suspend fun createPayment(userId: String, token: String, checkoutId: String, orderId: String, totals: CheckoutTotals, request: CheckoutRequest, details: CheckoutDetails): PaymentWire {
             calls += "payment"
             return PaymentWire("payment-1", paymentStatus, "client-secret")
         }

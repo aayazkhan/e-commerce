@@ -23,18 +23,39 @@ import androidx.compose.ui.window.ComposeViewport
 import com.ecommerce.core.common.ApiResult
 import kotlinx.coroutines.launch
 
+private const val ACCESS_TOKEN_STORAGE_KEY = "storefront_access_token"
+
+/** Parses the small, fixed set of query params this app ever receives (from PayU's callback
+ * redirect -- see PaymentReturnScreen.kt). Not a general-purpose URL parser. */
+private fun parseQueryParams(search: String): Map<String, String> {
+    if (search.isBlank() || search == "?") return emptyMap()
+    return search.removePrefix("?").split("&").mapNotNull { pair ->
+        val parts = pair.split("=", limit = 2)
+        if (parts.size != 2 || parts[0].isBlank()) null else parts[0] to parts[1]
+    }.toMap()
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     ComposeViewport("ComposeTarget") {
         StorefrontTheme {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 val dependencies = remember { AppDependencies() }
-                var screen by remember { mutableStateOf<Screen>(Screen.Browse) }
-                var isAuthenticated by remember { mutableStateOf(false) }
+                val queryParams = remember { parseQueryParams(currentLocationSearch()) }
+                val restoredToken = remember { localStorageGet(ACCESS_TOKEN_STORAGE_KEY).takeIf { it.isNotBlank() } }
+                val paymentReturn = remember { queryParams["checkoutId"]?.let { id -> Screen.PaymentReturn(id, queryParams["payment"] ?: "invalid") } }
+                var screen by remember { mutableStateOf<Screen>(paymentReturn ?: Screen.Browse) }
+                var isAuthenticated by remember { mutableStateOf(restoredToken != null) }
                 var guestToken by remember { mutableStateOf<String?>(null) }
                 var cartRefreshKey by remember { mutableStateOf(0) }
                 var pendingAfterLogin by remember { mutableStateOf<Screen?>(null) }
                 val scope = rememberCoroutineScope()
+
+                remember {
+                    restoredToken?.let { dependencies.session.set(it) }
+                    if (paymentReturn != null) clearLocationSearch()
+                    true
+                }
 
                 fun addToCart(variantId: String, productId: String, quantity: Int) {
                     scope.launch {
@@ -54,6 +75,7 @@ fun main() {
 
                 fun completeLogin(accessToken: String) {
                     dependencies.session.set(accessToken)
+                    localStorageSet(ACCESS_TOKEN_STORAGE_KEY, accessToken)
                     isAuthenticated = true
                     val token = guestToken
                     scope.launch {
@@ -80,6 +102,7 @@ fun main() {
                         onLoginOrAccount = { if (isAuthenticated) Unit else screen = Screen.Login },
                         onLogout = {
                             dependencies.session.clear()
+                            localStorageRemove(ACCESS_TOKEN_STORAGE_KEY)
                             isAuthenticated = false
                             screen = Screen.Browse
                         },
@@ -124,6 +147,15 @@ fun main() {
                             )
                             is Screen.OrderConfirmation -> OrderConfirmationScreen(
                                 checkoutId = current.checkoutId,
+                                onContinueShopping = {
+                                    cartRefreshKey += 1
+                                    screen = Screen.Browse
+                                },
+                            )
+                            is Screen.PaymentReturn -> PaymentReturnScreen(
+                                checkoutId = current.checkoutId,
+                                outcome = current.outcome,
+                                checkoutApi = dependencies.checkoutApi,
                                 onContinueShopping = {
                                     cartRefreshKey += 1
                                     screen = Screen.Browse
