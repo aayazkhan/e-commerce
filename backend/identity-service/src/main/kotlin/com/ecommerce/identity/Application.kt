@@ -8,6 +8,8 @@ import com.ecommerce.identity.infrastructure.DatabaseFactory
 import com.ecommerce.identity.infrastructure.IdentityRepository
 import com.ecommerce.identity.infrastructure.OutboxPublisher
 import com.ecommerce.identity.security.HttpChallengeDelivery
+import com.ecommerce.identity.security.MultiChannelChallengeDelivery
+import com.ecommerce.identity.security.ResendEmailProvider
 import com.ecommerce.identity.security.JwtService
 import com.ecommerce.identity.security.PasswordHasher
 import com.ecommerce.identity.security.ConfiguredOAuthIdentityVerifier
@@ -59,7 +61,12 @@ fun Application.module() {
         passwordHasher = PasswordHasher(),
         jwtService = jwtService,
         rateLimiter = redis,
-        delivery = HttpChallengeDelivery(identityConfig.challengeDelivery),
+        delivery = identityConfig.challengeDelivery.resendApiKey?.takeIf { it.isNotBlank() }?.let { resendKey ->
+            MultiChannelChallengeDelivery(
+                email = ResendEmailProvider(resendKey, identityConfig.challengeDelivery.resendFromAddress),
+                smsFallback = HttpChallengeDelivery(identityConfig.challengeDelivery),
+            )
+        } ?: HttpChallengeDelivery(identityConfig.challengeDelivery),
         oauthVerifier = ConfiguredOAuthIdentityVerifier(identityConfig.oauth),
         security = identityConfig.security,
         refreshTokenDays = identityConfig.jwt.refreshTokenDays,

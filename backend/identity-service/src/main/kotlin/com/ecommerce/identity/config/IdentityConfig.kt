@@ -41,6 +41,8 @@ data class IdentityConfig(
             challengeDelivery = ChallengeDeliveryConfig(
                 url = config.propertyOrNull("identity.challengeDelivery.url")?.getString(),
                 bearerToken = config.propertyOrNull("identity.challengeDelivery.bearerToken")?.getString(),
+                resendApiKey = config.propertyOrNull("identity.challengeDelivery.resendApiKey")?.getString(),
+                resendFromAddress = config.propertyOrNull("identity.challengeDelivery.resendFromAddress")?.getString()?.takeIf { it.isNotBlank() } ?: "onboarding@resend.dev",
             ),
             oauth = OAuthConfig(
                 googleUserInfoUrl = config.propertyOrNull("identity.oauth.googleUserInfoUrl")?.getString(),
@@ -91,8 +93,11 @@ data class SecurityConfig(
 )
 
 data class ChallengeDeliveryConfig(
+    /** Fallback webhook (e.g. a local stub) used for SMS/phone OTPs -- Resend is email-only. */
     val url: String?,
     val bearerToken: String?,
+    val resendApiKey: String? = null,
+    val resendFromAddress: String = "onboarding@resend.dev",
 )
 
 data class OAuthConfig(

@@ -58,6 +58,61 @@ class HttpChallengeDelivery(
     )
 }
 
+/**
+ * Routes by destination shape: an "@"-containing destination is an email, sent via [email]
+ * (Resend); anything else is a phone number, sent via [smsFallback] -- normally the local
+ * challenge-stub.py webhook in dev (see ops/local/run-identity.sh), since MSG91 isn't wired in
+ * yet. [VerificationPurpose] (email verification / password reset) is always email by
+ * construction, so it always goes through [email] directly.
+ */
+class MultiChannelChallengeDelivery(
+    private val email: EmailProvider,
+    private val smsFallback: ChallengeDelivery,
+) : ChallengeDelivery {
+    override fun deliverOtp(userId: String?, destination: String, purpose: OtpPurpose, code: String) {
+        if ("@" in destination) {
+            email.send(destination, otpSubject(purpose), otpHtml(purpose, code))
+        } else {
+            smsFallback.deliverOtp(userId, destination, purpose, code)
+        }
+    }
+
+    override fun deliverVerification(userId: String, destination: String, purpose: VerificationPurpose, token: String) {
+        email.send(destination, verificationSubject(purpose), verificationHtml(purpose, token))
+    }
+
+    private fun otpSubject(purpose: OtpPurpose) = when (purpose) {
+        OtpPurpose.LOGIN -> "Your login code"
+        OtpPurpose.PASSWORD_RESET -> "Your password reset code"
+        OtpPurpose.EMAIL_VERIFICATION -> "Verify your email"
+        OtpPurpose.PHONE_VERIFICATION -> "Verify your phone"
+    }
+
+    private fun otpHtml(purpose: OtpPurpose, code: String) = """
+        <p>Your one-time code is:</p>
+        <p style="font-size:28px;font-weight:700;letter-spacing:4px;">$code</p>
+        <p>This code expires shortly and can only be used once. If you didn't request this, you can ignore this email.</p>
+    """.trimIndent()
+
+    private fun verificationSubject(purpose: VerificationPurpose) = when (purpose) {
+        VerificationPurpose.EMAIL_VERIFICATION -> "Verify your email address"
+        VerificationPurpose.PASSWORD_RESET -> "Reset your password"
+    }
+
+    private fun verificationHtml(purpose: VerificationPurpose, token: String) = when (purpose) {
+        VerificationPurpose.EMAIL_VERIFICATION -> """
+            <p>Use the code below to verify your email address:</p>
+            <p style="font-size:22px;font-weight:700;letter-spacing:2px;">$token</p>
+            <p>If you didn't create an account, you can ignore this email.</p>
+        """.trimIndent()
+        VerificationPurpose.PASSWORD_RESET -> """
+            <p>Use the code below to reset your password:</p>
+            <p style="font-size:22px;font-weight:700;letter-spacing:2px;">$token</p>
+            <p>If you didn't request a password reset, you can ignore this email.</p>
+        """.trimIndent()
+    }
+}
+
 @Serializable
 private data class ChallengeMessage(
     val type: String,

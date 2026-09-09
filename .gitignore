@@ -43,6 +43,7 @@ key.properties
 #.env
 #.env.*
 #!.env.example
+ops/local/secrets.env
 
 # Xcode
 DerivedData/
