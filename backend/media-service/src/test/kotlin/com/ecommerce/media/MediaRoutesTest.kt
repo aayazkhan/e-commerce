@@ -77,7 +77,12 @@ class MediaRoutesTest {
 
         val found = client.get("/api/v1/media/media-1")
         assertEquals(HttpStatusCode.OK, found.status)
-        assertTrue(found.bodyAsText().contains("https://cdn.test/media/variant.jpg"), found.bodyAsText())
+        assertTrue(found.bodyAsText().contains("/api/v1/media/media-1/variants/variant-1/view"), found.bodyAsText())
+
+        val noRedirectClient = client.config { followRedirects = false }
+        val view = noRedirectClient.get("/api/v1/media/media-1/variants/variant-1/view")
+        assertEquals(HttpStatusCode.Found, view.status)
+        assertEquals("https://download.test/media/variant.jpg", view.headers[HttpHeaders.Location])
         store.missingIds += "missing"
         assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/media/missing").status)
 
@@ -168,6 +173,7 @@ class MediaRoutesTest {
         override fun delete(key: String) { deletedKeys += key; if (failDelete) error("storage unavailable") }
         override fun get(key: String): ByteArray = objects[key] ?: jpegBytes
         override fun presignPut(key: String, contentType: String, size: Long): String { presignedKey = key; return "https://upload.test/$key" }
+        override fun presignGet(key: String): String = "https://download.test/$key"
         override fun url(key: String): String = "https://cdn.test/$key"
     }
 

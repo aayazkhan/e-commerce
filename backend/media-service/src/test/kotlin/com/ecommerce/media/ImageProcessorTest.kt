@@ -74,6 +74,7 @@ class ImageProcessorTest {
         override fun delete(key: String) = Unit
         override fun get(key: String) = error("not used")
         override fun presignPut(key: String, contentType: String, size: Long) = error("not used")
+        override fun presignGet(key: String) = error("not used")
         override fun url(key: String) = "s3://bucket/$key"
     }
 
