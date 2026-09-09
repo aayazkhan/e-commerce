@@ -43,6 +43,8 @@ data class IdentityConfig(
                 bearerToken = config.propertyOrNull("identity.challengeDelivery.bearerToken")?.getString(),
                 resendApiKey = config.propertyOrNull("identity.challengeDelivery.resendApiKey")?.getString(),
                 resendFromAddress = config.propertyOrNull("identity.challengeDelivery.resendFromAddress")?.getString()?.takeIf { it.isNotBlank() } ?: "onboarding@resend.dev",
+                msg91AuthKey = config.propertyOrNull("identity.challengeDelivery.msg91AuthKey")?.getString(),
+                msg91TemplateId = config.propertyOrNull("identity.challengeDelivery.msg91TemplateId")?.getString(),
             ),
             oauth = OAuthConfig(
                 googleUserInfoUrl = config.propertyOrNull("identity.oauth.googleUserInfoUrl")?.getString(),
@@ -98,6 +100,8 @@ data class ChallengeDeliveryConfig(
     val bearerToken: String?,
     val resendApiKey: String? = null,
     val resendFromAddress: String = "onboarding@resend.dev",
+    val msg91AuthKey: String? = null,
+    val msg91TemplateId: String? = null,
 )
 
 data class OAuthConfig(

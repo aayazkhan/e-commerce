@@ -9,6 +9,7 @@ import com.ecommerce.identity.infrastructure.IdentityRepository
 import com.ecommerce.identity.infrastructure.OutboxPublisher
 import com.ecommerce.identity.security.HttpChallengeDelivery
 import com.ecommerce.identity.security.MultiChannelChallengeDelivery
+import com.ecommerce.identity.security.Msg91SmsProvider
 import com.ecommerce.identity.security.ResendEmailProvider
 import com.ecommerce.identity.security.JwtService
 import com.ecommerce.identity.security.PasswordHasher
@@ -62,9 +63,12 @@ fun Application.module() {
         jwtService = jwtService,
         rateLimiter = redis,
         delivery = identityConfig.challengeDelivery.resendApiKey?.takeIf { it.isNotBlank() }?.let { resendKey ->
+            val msg91AuthKey = identityConfig.challengeDelivery.msg91AuthKey?.takeIf { it.isNotBlank() }
+            val msg91TemplateId = identityConfig.challengeDelivery.msg91TemplateId?.takeIf { it.isNotBlank() }
             MultiChannelChallengeDelivery(
                 email = ResendEmailProvider(resendKey, identityConfig.challengeDelivery.resendFromAddress),
                 smsFallback = HttpChallengeDelivery(identityConfig.challengeDelivery),
+                sms = if (msg91AuthKey != null && msg91TemplateId != null) Msg91SmsProvider(msg91AuthKey, msg91TemplateId) else null,
             )
         } ?: HttpChallengeDelivery(identityConfig.challengeDelivery),
         oauthVerifier = ConfiguredOAuthIdentityVerifier(identityConfig.oauth),

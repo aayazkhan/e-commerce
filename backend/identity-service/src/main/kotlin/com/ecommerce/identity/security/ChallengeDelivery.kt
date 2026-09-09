@@ -60,18 +60,21 @@ class HttpChallengeDelivery(
 
 /**
  * Routes by destination shape: an "@"-containing destination is an email, sent via [email]
- * (Resend); anything else is a phone number, sent via [smsFallback] -- normally the local
- * challenge-stub.py webhook in dev (see ops/local/run-identity.sh), since MSG91 isn't wired in
- * yet. [VerificationPurpose] (email verification / password reset) is always email by
- * construction, so it always goes through [email] directly.
+ * (Resend). Anything else is a phone number: sent via [sms] (MSG91) when configured, otherwise
+ * via [smsFallback] -- normally the local challenge-stub.py webhook in dev (see
+ * ops/local/run-identity.sh). [VerificationPurpose] (email verification / password reset) is
+ * always email by construction, so it always goes through [email] directly.
  */
 class MultiChannelChallengeDelivery(
     private val email: EmailProvider,
     private val smsFallback: ChallengeDelivery,
+    private val sms: SmsProvider? = null,
 ) : ChallengeDelivery {
     override fun deliverOtp(userId: String?, destination: String, purpose: OtpPurpose, code: String) {
         if ("@" in destination) {
             email.send(destination, otpSubject(purpose), otpHtml(purpose, code))
+        } else if (sms != null) {
+            sms.sendOtp(destination, code)
         } else {
             smsFallback.deliverOtp(userId, destination, purpose, code)
         }
